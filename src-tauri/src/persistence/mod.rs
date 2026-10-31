@@ -73,11 +73,6 @@ fn bak_path(path: &Path) -> PathBuf {
     PathBuf::from(s)
 }
 
-/// 供测试与清理使用
-pub fn test_dir() -> PathBuf {
-    std::env::temp_dir().join("luminadesk-persistence-tests")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,14 +80,23 @@ mod tests {
 
     static SEQ: AtomicU32 = AtomicU32::new(0);
 
-    fn unique_file(name: &str) -> PathBuf {
+    /// 每个测试独立的子目录（测试并行运行，禁止共享目录 + remove_dir_all 全局清理——
+    /// 曾实测并发互删导致偶发失败）
+    fn unique_dir(name: &str) -> PathBuf {
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
-        test_dir().join(format!("{name}-{n}.json"))
+        let d = std::env::temp_dir().join(format!("lumina-persist-{name}-{n}"));
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn unique_file(dir: &Path, name: &str) -> PathBuf {
+        dir.join(format!("{name}.json"))
     }
 
     #[test]
     fn roundtrip_and_bak() {
-        let p = unique_file("rt");
+        let dir = unique_dir("rt");
+        let p = unique_file(&dir, "rt");
         atomic_write(&p, &serde_json::json!({"a": 1})).unwrap();
         let v: serde_json::Value = load_with_fallback(&p).unwrap();
         assert_eq!(v["a"], 1);
@@ -104,12 +108,13 @@ mod tests {
         let bak: serde_json::Value =
             serde_json::from_slice(&fs::read(bak_path(&p)).unwrap()).unwrap();
         assert_eq!(bak["a"], 1);
-        fs::remove_dir_all(test_dir()).ok();
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn corruption_falls_back_to_bak() {
-        let p = unique_file("corrupt");
+        let dir = unique_dir("corrupt");
+        let p = unique_file(&dir, "corrupt");
         atomic_write(&p, &serde_json::json!({"ok": true})).unwrap();
         atomic_write(&p, &serde_json::json!({"ok": "second"})).unwrap();
         // 主文件写入垃圾字节
@@ -117,13 +122,15 @@ mod tests {
         let v: serde_json::Value = load_with_fallback(&p).unwrap();
         // 回退到 .bak（第一次写入的内容）
         assert_eq!(v["ok"], true);
-        fs::remove_dir_all(test_dir()).ok();
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn both_missing_returns_none() {
-        let p = unique_file("missing");
+        let dir = unique_dir("missing");
+        let p = unique_file(&dir, "missing");
         let v: Option<serde_json::Value> = load_with_fallback(&p);
         assert!(v.is_none());
+        fs::remove_dir_all(&dir).ok();
     }
 }

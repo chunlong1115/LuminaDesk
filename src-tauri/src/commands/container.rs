@@ -62,16 +62,26 @@ fn store_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| e.to_string())
 }
 
+/// 纯函数：从指定路径读取 store（损坏回退 .bak，均失败返回默认值）——可单测
+pub(crate) fn load_store_at(path: &std::path::Path) -> ContainerStore {
+    load_with_fallback(path).unwrap_or_default()
+}
+
+/// 纯函数：原子写入指定路径——可单测
+pub(crate) fn save_store_at(path: &std::path::Path, store: &ContainerStore) -> Result<(), String> {
+    atomic_write(path, store).map_err(|e| e.to_string())
+}
+
 fn load_store(app: &AppHandle) -> ContainerStore {
     store_path(app)
         .ok()
-        .and_then(|p| load_with_fallback(&p))
+        .map(|p| load_store_at(&p))
         .unwrap_or_default()
 }
 
 fn save_store(app: &AppHandle, store: &ContainerStore) -> Result<(), String> {
     let p = store_path(app)?;
-    atomic_write(&p, store).map_err(|e| e.to_string())
+    save_store_at(&p, store)
 }
 
 pub(crate) fn desktop_dir_path() -> Result<PathBuf, String> {
@@ -309,6 +319,116 @@ fn icon_png_base64(path: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static SEQ: AtomicU32 = AtomicU32::new(0);
+
+    fn temp_store_path(name: &str) -> PathBuf {
+        let n = SEQ.fetch_add(1, Ordering::SeqCst);
+        std::env::temp_dir().join(format!("lumina-store-{name}-{n}.json"))
+    }
+
+    fn entry(path: &str, x: i32, y: i32) -> LayoutEntry {
+        LayoutEntry { path: path.into(), x, y }
+    }
+
+    #[test]
+    fn store_roundtrip() {
+        let p = temp_store_path("rt");
+        let mut s = ContainerStore::default();
+        s.layout.push(entry("a", 10, 20));
+        s.groups.push(GroupEntry { id: "g1".into(), name: "组".into(), item_paths: vec!["a".into()] });
+        save_store_at(&p, &s).unwrap();
+        let loaded = load_store_at(&p);
+        assert_eq!(loaded.layout.len(), 1);
+        assert_eq!(loaded.layout[0].x, 10);
+        assert_eq!(loaded.layout[0].y, 20);
+        assert_eq!(loaded.groups.len(), 1);
+        assert_eq!(loaded.groups[0].item_paths, vec!["a".to_string()]);
+        let _ = fs::remove_file(&p);
+    }
+
+    #[test]
+    fn store_corruption_falls_back_to_bak() {
+        let p = temp_store_path("corrupt");
+        let s1 = { let mut s = ContainerStore::default(); s.layout.push(entry("a", 1, 1)); s };
+        save_store_at(&p, &s1).unwrap();
+        let s2 = { let mut s = ContainerStore::default(); s.layout.push(entry("a", 2, 2)); s };
+        save_store_at(&p, &s2).unwrap(); // 覆盖前留 .bak（第一版）
+        fs::write(&p, b"{{{garbage").unwrap();
+        let loaded = load_store_at(&p);
+        assert_eq!(loaded.layout[0].x, 1, "应回退到 .bak 的第一版");
+        let _ = fs::remove_file(&p);
+        let _ = fs::remove_file(format!("{}.bak", p.display()));
+    }
+
+    #[test]
+    fn move_overwrites_same_path() {
+        // 模拟 container_move_item 的合并语义
+        let p = temp_store_path("move");
+        let mut s = ContainerStore::default();
+        s.layout.push(entry("a", 1, 1));
+        save_store_at(&p, &s).unwrap();
+
+        let mut s2 = load_store_at(&p);
+        if let Some(e) = s2.layout.iter_mut().find(|e| e.path == "a") {
+            e.x = 99; e.y = 88;
+        }
+        save_store_at(&p, &s2).unwrap();
+
+        let loaded = load_store_at(&p);
+        assert_eq!(loaded.layout.len(), 1, "同路径覆盖而非追加");
+        assert_eq!((loaded.layout[0].x, loaded.layout[0].y), (99, 88));
+        let _ = fs::remove_file(&p);
+    }
+
+    #[test]
+    fn save_layout_merges_batch() {
+        // 模拟 container_save_layout 的批量合并语义（新旧混合）
+        let p = temp_store_path("batch");
+        let mut s = ContainerStore::default();
+        s.layout.push(entry("old", 5, 5));
+        save_store_at(&p, &s).unwrap();
+
+        let mut s2 = load_store_at(&p);
+        for e in [entry("old", 7, 7), entry("new", 3, 3)] {
+            if let Some(x) = s2.layout.iter_mut().find(|x| x.path == e.path) {
+                x.x = e.x; x.y = e.y;
+            } else {
+                s2.layout.push(e);
+            }
+        }
+        save_store_at(&p, &s2).unwrap();
+
+        let loaded = load_store_at(&p);
+        assert_eq!(loaded.layout.len(), 2);
+        let old = loaded.layout.iter().find(|e| e.path == "old").unwrap();
+        assert_eq!((old.x, old.y), (7, 7));
+        let _ = fs::remove_file(&p);
+    }
+
+    #[test]
+    fn group_crud() {
+        let p = temp_store_path("group");
+        let mut s = ContainerStore::default();
+        s.groups.push(GroupEntry { id: "g1".into(), name: "G".into(), item_paths: vec![] });
+        save_store_at(&p, &s).unwrap();
+
+        // add
+        let mut s2 = load_store_at(&p);
+        let g = s2.groups.iter_mut().find(|g| g.id == "g1").unwrap();
+        g.item_paths.push("x".into());
+        save_store_at(&p, &s2).unwrap();
+        assert_eq!(load_store_at(&p).groups[0].item_paths, vec!["x".to_string()]);
+
+        // remove
+        let mut s3 = load_store_at(&p);
+        let g = s3.groups.iter_mut().find(|g| g.id == "g1").unwrap();
+        g.item_paths.retain(|i| i != "x");
+        save_store_at(&p, &s3).unwrap();
+        assert!(load_store_at(&p).groups[0].item_paths.is_empty());
+        let _ = fs::remove_file(&p);
+    }
 
     fn make_dib(memdc: windows::Win32::Graphics::Gdi::HDC) -> (*mut core::ffi::c_void, windows::Win32::Graphics::Gdi::HBITMAP) {
         const S: usize = 32;
