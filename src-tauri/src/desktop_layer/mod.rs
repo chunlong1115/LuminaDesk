@@ -68,10 +68,16 @@ pub const DESKTOP_LAYER_ARGS: &str = "--disable-background-timer-throttling --di
 
 /// 创建容器窗口（visible:false 创建、挂载后 Show，避免闪烁）
 pub fn create_container_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
+    // debug 构建携带诊断参数（S4 滴答验证）；release 不带（零开销）
+    let url = if cfg!(debug_assertions) {
+        "index.html?role=container&diag=1"
+    } else {
+        "index.html?role=container"
+    };
     tauri::WebviewWindowBuilder::new(
         app,
         label,
-        tauri::WebviewUrl::App("index.html?role=container".into()),
+        tauri::WebviewUrl::App(url.into()),
     )
     .title("LuminaDesk Container")
     .inner_size(560.0, 460.0)

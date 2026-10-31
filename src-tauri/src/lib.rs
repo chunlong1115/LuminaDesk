@@ -74,6 +74,17 @@ fn ping() -> String {
     "pong".into()
 }
 
+/// 诊断滴答计数（S4 回归基础设施）：容器页在 ?diag=1 时每秒上报一次，
+/// 验证遮挡下 JS 定时器不节流。仅诊断路径，产品零开销。
+static DIAG_TICKS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+#[tauri::command]
+fn diag_tick() -> u32 {
+    let n = DIAG_TICKS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    println!("[lumina-diag] tick={n}");
+    n
+}
+
 #[tauri::command]
 fn layer_status(app: AppHandle) -> String {
     desktop_layer::layer_status(&app)
@@ -113,6 +124,7 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             ping,
+            diag_tick,
             layer_status,
             layer_attach_now,
             layer_detach_now,

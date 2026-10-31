@@ -15,6 +15,7 @@ import {
   type GroupEntry,
   type LayoutEntry,
 } from "../../lib/ipc";
+import { diagTick, shouldEnableDiag } from "../../lib/diag";
 import styles from "./ContainerPage.module.css";
 
 const CELL_W = 104;
@@ -265,6 +266,15 @@ export function ContainerPage() {
       if (g) await doGroupAdd(g.id, menu.path);
     }
   }, [menu, doGroupAdd]);
+
+  // 诊断滴答（S4 回归）：仅 ?diag=1（debug 构建自动携带）时每秒上报
+  useEffect(() => {
+    if (!shouldEnableDiag(window.location.search)) return;
+    const id = window.setInterval(() => {
+      void diagTick().catch(() => {});
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const visibleItems = useMemo(() => items, [items]);
 
