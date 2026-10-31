@@ -12,6 +12,8 @@ pub struct Settings {
     pub container_opacity: f64,
     /// 主题（v1 仅 dark）
     pub theme: String,
+    /// 桌面右键替换（WH_MOUSE_LL 钩子，默认关闭）
+    pub desktop_menu_enabled: bool,
 }
 
 /// 容器布局（物理像素存盘，加载时按当前 DPI 换算）

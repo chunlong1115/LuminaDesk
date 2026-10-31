@@ -120,6 +120,18 @@ export function ContainerPage() {
     return () => window.clearInterval(id);
   }, []);
 
+  // 桌面右键替换：钩子拦截桌面右键 → 在容器局部坐标弹出自定义菜单
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void onEvent<{ x: number; y: number }>(EVENTS.desktopMenuClick, (p) => {
+      setMenu({ x: p.x, y: p.y, path: null });
+      setGroupSubmenu(false);
+    }).then((f) => {
+      unlisten = f;
+    });
+    return () => unlisten?.();
+  }, []);
+
   const indexOf = useMemo(() => {
     const m = new Map<string, number>();
     items.forEach((item, i) => m.set(item.path, i));
@@ -372,9 +384,14 @@ export function ContainerPage() {
             </>
           )}
           {!menu.path && (
-            <button className={styles.menuItem} onClick={() => void doGroupCreate()}>
-              新建分组…
-            </button>
+            <>
+              <button className={styles.menuItem} onClick={() => void doGroupCreate()}>
+                新建分组…
+              </button>
+              <button className={styles.menuItem} onClick={() => { void refresh(); clearMenu(); }}>
+                刷新
+              </button>
+            </>
           )}
         </div>
       )}

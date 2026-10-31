@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { layerAttachNow, layerDetachNow, layerStatus } from "../../lib/ipc";
+import {
+  desktopMenuGet,
+  desktopMenuSet,
+  layerAttachNow,
+  layerDetachNow,
+  layerStatus,
+} from "../../lib/ipc";
 import { useSettings } from "../../stores/settings";
 import styles from "./ControlPage.module.css";
 
@@ -7,7 +13,20 @@ import styles from "./ControlPage.module.css";
 export function ControlPage() {
   const [status, setStatus] = useState("检测中…");
   const [busy, setBusy] = useState(false);
+  const [desktopMenuEnabled, setDesktopMenuEnabled] = useState(false);
   const { desktopLayerEnabled, containerOpacity, set } = useSettings();
+
+  useEffect(() => {
+    void desktopMenuGet().then(setDesktopMenuEnabled).catch(() => {});
+  }, []);
+
+  const toggleDesktopMenu = async (enabled: boolean) => {
+    try {
+      setDesktopMenuEnabled(await desktopMenuSet(enabled));
+    } catch (e) {
+      setStatus(`桌面右键设置失败: ${e}`);
+    }
+  };
 
   const refresh = useCallback(async () => {
     try {
@@ -71,6 +90,17 @@ export function ControlPage() {
             value={Math.round(containerOpacity * 100)}
             onChange={(e) => set({ containerOpacity: Number(e.target.value) / 100 })}
           />
+        </label>
+      </section>
+      <section className={styles.card}>
+        <h2>实验功能</h2>
+        <label className={styles.check}>
+          <input
+            type="checkbox"
+            checked={desktopMenuEnabled}
+            onChange={(e) => void toggleDesktopMenu(e.target.checked)}
+          />
+          桌面右键替换（拦截桌面右键显示 LuminaDesk 菜单，替代系统默认菜单）
         </label>
       </section>
     </div>

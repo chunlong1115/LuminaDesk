@@ -2,6 +2,7 @@
 
 mod commands;
 mod desktop_layer;
+mod desktop_menu;
 mod events;
 mod fs_watch;
 mod persistence;
@@ -100,6 +101,45 @@ fn layer_detach_now(app: AppHandle) -> Result<String, String> {
     desktop_layer::detach_container(&app)
 }
 
+// ---- 桌面右键替换设置（persistence/settings.json） ----
+
+fn settings_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|d| d.join("settings.json"))
+        .map_err(|e| e.to_string())
+}
+
+fn load_settings(app: &AppHandle) -> persistence::models::Settings {
+    settings_path(app)
+        .ok()
+        .and_then(|p| persistence::load_with_fallback(&p))
+        .unwrap_or_default()
+}
+
+fn save_settings(app: &AppHandle, s: &persistence::models::Settings) -> Result<(), String> {
+    let p = settings_path(app)?;
+    persistence::atomic_write(&p, s).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn desktop_menu_set(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    let mut s = load_settings(&app);
+    s.desktop_menu_enabled = enabled;
+    save_settings(&app, &s)?;
+    if enabled {
+        desktop_menu::enable();
+    } else {
+        desktop_menu::disable();
+    }
+    Ok(enabled)
+}
+
+#[tauri::command]
+fn desktop_menu_get(app: AppHandle) -> bool {
+    load_settings(&app).desktop_menu_enabled
+}
+
 pub fn run() {
     let _app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -128,6 +168,8 @@ pub fn run() {
             layer_status,
             layer_attach_now,
             layer_detach_now,
+            desktop_menu_set,
+            desktop_menu_get,
             commands::container_list_items,
             commands::container_move_item,
             commands::container_save_layout,
@@ -188,7 +230,13 @@ pub fn run() {
             let handle = app.handle().clone();
             build_tray(&handle)?;
 
-            // 6. 打开控制窗口（产品化改为纯托盘懒加载；开发期默认打开便于验收）
+            // 6. 桌面右键替换钩子线程（默认不安装钩子，设置开关后按需安装/卸载）
+            desktop_menu::init(app.handle().clone());
+            if load_settings(app.handle()).desktop_menu_enabled {
+                desktop_menu::enable();
+            }
+
+            // 7. 打开控制窗口（产品化改为纯托盘懒加载；开发期默认打开便于验收）
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = create_control_window(&handle) {

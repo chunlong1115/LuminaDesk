@@ -6,3 +6,4 @@ pub const FS_CHANGED: &str = "lumina://fs-changed";
 pub const CONTAINERS_CHANGED: &str = "lumina://containers-changed";
 pub const WIDGETS_CHANGED: &str = "lumina://widgets-changed";
 pub const REATTACH_LIMIT: &str = "lumina://reattach-limit";
+pub const DESKTOP_MENU_CLICK: &str = "lumina://desktop-menu-click";

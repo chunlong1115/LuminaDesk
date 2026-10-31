@@ -46,6 +46,14 @@ export async function layerDetachNow(): Promise<string> {
   return invoke("layer_detach_now");
 }
 
+export async function desktopMenuSet(enabled: boolean): Promise<boolean> {
+  return invoke("desktop_menu_set", { enabled });
+}
+
+export async function desktopMenuGet(): Promise<boolean> {
+  return invoke("desktop_menu_get");
+}
+
 export async function containerListItems(): Promise<ContainerItem[]> {
   return invoke("container_list_items");
 }
@@ -104,7 +112,13 @@ export const EVENTS = {
   containersChanged: "lumina://containers-changed",
   widgetsChanged: "lumina://widgets-changed",
   reattachLimit: "lumina://reattach-limit",
+  desktopMenuClick: "lumina://desktop-menu-click",
 } as const;
+
+export interface DesktopMenuClickPayload {
+  x: number;
+  y: number;
+}
 
 export function onEvent<T>(name: string, cb: (payload: T) => void): Promise<UnlistenFn> {
   return listen<T>(name, (e) => cb(e.payload));
