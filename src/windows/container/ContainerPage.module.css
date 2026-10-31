@@ -1,4 +1,4 @@
-/* 容器窗口：整体透明，仅面板可见（配合 Rust 侧 WS_EX_NOREDIRECTIONBITMAP） */
+/* 容器窗口：整体透明（配合 Rust 侧 WS_EX_NOREDIRECTIONBITMAP） */
 html,
 body,
 #root {
@@ -8,19 +8,117 @@ body,
 }
 
 .page {
+  position: relative;
   width: 100vw;
   height: 100vh;
   background: transparent;
+  user-select: none;
+  overflow: hidden;
 }
 
-.panel {
+.item {
   position: absolute;
-  left: 16px;
-  top: 16px;
-  padding: 16px 20px;
-  background: rgba(18, 28, 46, 0.78);
-  color: #e8f0ff;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 8px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.selected {
+  background: rgba(125, 180, 255, 0.22);
+  outline: 1px solid rgba(125, 180, 255, 0.5);
+}
+
+.iconWrap {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.iconPlaceholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 14px;
+  color: #9fb4d8;
+}
+
+.label {
+  margin-top: 4px;
+  width: 96px;
+  padding: 0 3px;
+  max-height: 34px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #eef4ff;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  overflow-wrap: anywhere;
+  box-sizing: border-box;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.band {
+  position: absolute;
+  border: 1px solid rgba(125, 180, 255, 0.8);
+  background: rgba(125, 180, 255, 0.15);
+  pointer-events: none;
+}
+
+.menu {
+  position: absolute;
+  z-index: 10;
+  min-width: 150px;
+  padding: 4px;
+  background: rgba(16, 21, 31, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.submenu {
+  margin-left: 6px;
+  padding-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.menuItem {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: #e8f0ff;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  background: rgba(125, 180, 255, 0.18);
 }

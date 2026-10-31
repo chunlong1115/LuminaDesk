@@ -8,16 +8,11 @@
 
 .page h1 {
   font-size: 18px;
-  margin: 0 0 8px;
-}
-
-.status {
-  font-size: 13px;
-  color: #9fb4d8;
+  margin: 0 0 16px;
 }
 
 .card {
-  margin-top: 16px;
+  margin-bottom: 16px;
   background: #0b0e15;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
@@ -27,5 +22,51 @@
 
 .card h2 {
   font-size: 14px;
-  margin: 0 0 8px;
+  margin: 0 0 10px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.row button,
+.check input {
+  cursor: pointer;
+}
+
+.row button {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8f0ff;
+}
+
+.row button:disabled {
+  opacity: 0.5;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status {
+  background: #070a10;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  margin: 10px 0 0;
+}
+
+.slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
