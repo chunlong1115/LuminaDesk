@@ -13,21 +13,19 @@ import {
   onEvent,
   type ContainerItem,
   type GroupEntry,
-  type LayoutEntry,
 } from "../../lib/ipc";
 import { diagTick, shouldEnableDiag } from "../../lib/diag";
+import { dropEntries, resolvePos, snapPos, type Pos } from "./dragMath";
 import styles from "./ContainerPage.module.css";
 
-const CELL_W = 104;
-const CELL_H = 96;
-const GRID_ORIGIN_X = 16;
-const GRID_ORIGIN_Y = 16;
-const COLS = 5;
-
-interface Pos {
-  x: number;
-  y: number;
-}
+const DRAG: import("./dragMath").DragParams = {
+  cellW: 104,
+  cellH: 96,
+  cols: 5,
+  originX: 16,
+  originY: 16,
+  snap: 8,
+};
 
 interface MenuState {
   x: number;
@@ -40,6 +38,7 @@ export function ContainerPage() {
   const [items, setItems] = useState<ContainerItem[]>([]);
   const [positions, setPositions] = useState<Map<string, Pos>>(new Map());
   const [icons, setIcons] = useState<Map<string, string>>(new Map());
+  const [iconErrors, setIconErrors] = useState<Map<string, string>>(new Map());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [groups, setGroups] = useState<GroupEntry[]>([]);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -50,6 +49,7 @@ export function ContainerPage() {
     startY: number;
     path: string;
     origin: Pos;
+    cur: Pos;
     moved: boolean;
   } | null>(null);
   const bandRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(
@@ -86,8 +86,7 @@ export function ContainerPage() {
     return () => unlisten?.();
   }, [refresh]);
 
-  // 图标懒加载（shell 图标 → base64，按路径缓存）
-  const [iconErrors, setIconErrors] = useState<Map<string, string>>(new Map());
+  // 图标懒加载（shell 图标 → base64，按路径缓存；失败不再重试）
   useEffect(() => {
     let cancelled = false;
     for (const item of items) {
@@ -112,17 +111,27 @@ export function ContainerPage() {
     };
   }, [items, icons, iconErrors]);
 
+  // 诊断滴答（S4 回归）：仅 ?diag=1（debug 构建自动携带）时每秒上报
+  useEffect(() => {
+    if (!shouldEnableDiag(window.location.search)) return;
+    const id = window.setInterval(() => {
+      void diagTick().catch(() => {});
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const indexOf = useMemo(() => {
+    const m = new Map<string, number>();
+    items.forEach((item, i) => m.set(item.path, i));
+    return m;
+  }, [items]);
+
   const posOf = useCallback(
-    (item: ContainerItem, index: number): Pos => {
+    (item: ContainerItem): Pos => {
       const saved = positions.get(item.path);
-      if (saved) return saved;
-      // 未持久化过：默认网格位（按列表序）
-      return {
-        x: GRID_ORIGIN_X + (index % COLS) * CELL_W,
-        y: GRID_ORIGIN_Y + Math.floor(index / COLS) * CELL_H,
-      };
+      return resolvePos(saved, indexOf.get(item.path) ?? 0, DRAG);
     },
-    [positions],
+    [positions, indexOf],
   );
 
   const clearMenu = useCallback(() => {
@@ -130,7 +139,6 @@ export function ContainerPage() {
     setGroupSubmenu(false);
   }, []);
 
-  // 指针事件（统一处理点选/拖拽/框选，坐标相对窗口）
   const toLocal = useCallback((e: React.PointerEvent): Pos => {
     const rect = pageRef.current?.getBoundingClientRect();
     return { x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) };
@@ -149,13 +157,23 @@ export function ContainerPage() {
           else ns.add(item.path);
           return ns;
         });
-        dragRef.current = { startX: p.x, startY: p.y, path: item.path, origin: posOf(item, 0), moved: false };
+        // 真实起点 = 该项目的实际渲染位（已存布局或默认网格位）
+        const origin = posOf(item);
+        dragRef.current = {
+          startX: p.x,
+          startY: p.y,
+          path: item.path,
+          origin,
+          cur: origin,
+          moved: false,
+        };
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
       } else {
         // 空白区：开始框选
         setSelected(new Set());
-        bandRef.current = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
-        setBand(bandRef.current);
+        const b = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+        bandRef.current = b;
+        setBand(b);
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
       }
     },
@@ -171,7 +189,8 @@ export function ContainerPage() {
         const dy = p.y - d.startY;
         if (!d.moved && Math.hypot(dx, dy) > 4) d.moved = true;
         if (d.moved) {
-          setDragPos({ x: d.origin.x + dx, y: d.origin.y + dy });
+          d.cur = { x: d.origin.x + dx, y: d.origin.y + dy };
+          setDragPos(d.cur);
         }
       } else if (bandRef.current) {
         const b = { ...bandRef.current, x1: p.x, y1: p.y };
@@ -182,56 +201,54 @@ export function ContainerPage() {
     [toLocal],
   );
 
-  const onPointerUp = useCallback(
-    (e: React.PointerEvent) => {
-      const p = toLocal(e);
-      if (dragRef.current) {
-        const d = dragRef.current;
-        if (d.moved && dragPos) {
-          const nx = Math.round(dragPos.x / 8) * 8;
-          const ny = Math.round(dragPos.y / 8) * 8;
-          setPositions((m) => new Map(m).set(d.path, { x: nx, y: ny }));
-          // 批量落盘：所有选中项一起移动（保持相对偏移）
-          const entries: LayoutEntry[] = [];
-          for (const sp of selected) {
-            const cur = positions.get(sp) ?? d.origin;
-            entries.push({
-              path: sp,
-              x: nx + (cur.x - d.origin.x),
-              y: ny + (cur.y - d.origin.y),
-            });
-          }
+  const onPointerUp = useCallback(() => {
+    if (dragRef.current) {
+      const d = dragRef.current;
+      if (d.moved) {
+        // 用 ref 里的最终位置（状态异步，读 state 会滞后一帧导致落点偏移）
+        const snapped = snapPos(d.cur, DRAG);
+        const selectedItems = items.filter((it) => selected.has(it.path));
+        const origins = selectedItems.map((it) => ({
+          path: it.path,
+          origin: posOf(it),
+        }));
+        const entries = dropEntries(origins, d.path, snapped.x, snapped.y);
+        if (entries.length > 0) {
+          // 本地立即回填全部移动项（含未持久化的选中项）
+          setPositions((m) => {
+            const nm = new Map(m);
+            for (const en of entries) nm.set(en.path, { x: en.x, y: en.y });
+            return nm;
+          });
           void containerSaveLayout(entries);
         }
-        dragRef.current = null;
-        setDragPos(null);
-      } else if (bandRef.current) {
-        // 框选结束：命中检测
-        const b = bandRef.current;
-        const bx0 = Math.min(b.x0, b.x1);
-        const by0 = Math.min(b.y0, b.y1);
-        const bx1 = Math.max(b.x0, b.x1);
-        const by1 = Math.max(b.y0, b.y1);
-        const hit = new Set<string>();
-        items.forEach((item, i) => {
-          const pos = posOf(item, i);
-          if (
-            pos.x + CELL_W > bx0 &&
-            pos.x < bx1 &&
-            pos.y + CELL_H > by0 &&
-            pos.y < by1
-          ) {
-            hit.add(item.path);
-          }
-        });
-        if (hit.size > 0) setSelected(hit);
-        bandRef.current = null;
-        setBand(null);
       }
-      void p;
-    },
-    [toLocal, dragPos, selected, positions, items, posOf],
-  );
+      dragRef.current = null;
+      setDragPos(null);
+    } else if (bandRef.current) {
+      // 框选结束：命中检测
+      const b = bandRef.current;
+      const bx0 = Math.min(b.x0, b.x1);
+      const by0 = Math.min(b.y0, b.y1);
+      const bx1 = Math.max(b.x0, b.x1);
+      const by1 = Math.max(b.y0, b.y1);
+      const hit = new Set<string>();
+      items.forEach((item) => {
+        const pos = posOf(item);
+        if (
+          pos.x + DRAG.cellW > bx0 &&
+          pos.x < bx1 &&
+          pos.y + DRAG.cellH > by0 &&
+          pos.y < by1
+        ) {
+          hit.add(item.path);
+        }
+      });
+      if (hit.size > 0) setSelected(hit);
+      bandRef.current = null;
+      setBand(null);
+    }
+  }, [items, selected, posOf]);
 
   const onContextMenu = useCallback(
     (e: React.MouseEvent, item?: ContainerItem) => {
@@ -267,17 +284,6 @@ export function ContainerPage() {
     }
   }, [menu, doGroupAdd]);
 
-  // 诊断滴答（S4 回归）：仅 ?diag=1（debug 构建自动携带）时每秒上报
-  useEffect(() => {
-    if (!shouldEnableDiag(window.location.search)) return;
-    const id = window.setInterval(() => {
-      void diagTick().catch(() => {});
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const visibleItems = useMemo(() => items, [items]);
-
   return (
     <div
       ref={pageRef}
@@ -291,14 +297,15 @@ export function ContainerPage() {
         if (e.target === e.currentTarget) onContextMenu(e);
       }}
     >
-      {visibleItems.map((item, i) => {
-        const pos = dragRef.current?.path === item.path && dragPos ? dragPos : posOf(item, i);
+      {items.map((item) => {
+        const isDragged = dragRef.current?.path === item.path;
+        const pos = isDragged && dragPos ? dragPos : posOf(item);
         const isSel = selected.has(item.path);
         return (
           <div
             key={item.path}
             className={`${styles.item} ${isSel ? styles.selected : ""}`}
-            style={{ left: pos.x, top: pos.y, width: CELL_W, height: CELL_H }}
+            style={{ left: pos.x, top: pos.y, width: DRAG.cellW, height: DRAG.cellH }}
             onPointerDown={(e) => onPointerDown(e, item)}
             onContextMenu={(e) => onContextMenu(e, item)}
             onDoubleClick={() => onDoubleClick(item)}
