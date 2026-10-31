@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//a//**)",
+      "Bash(pnpm --version)",
+      "Bash(cd /a)",
+      "Bash(pnpm create *)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(rustup show *)",
+      "Read(//a/spike/**)",
+      "Bash(pnpm install *)"
+    ]
+  }
+}

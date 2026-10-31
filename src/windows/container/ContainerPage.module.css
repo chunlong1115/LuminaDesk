@@ -1,0 +1,26 @@
+/* 容器窗口：整体透明，仅面板可见（配合 Rust 侧 WS_EX_NOREDIRECTIONBITMAP） */
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+}
+
+.page {
+  width: 100vw;
+  height: 100vh;
+  background: transparent;
+}
+
+.panel {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  padding: 16px 20px;
+  background: rgba(18, 28, 46, 0.78);
+  color: #e8f0ff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  font-size: 14px;
+}
