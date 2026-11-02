@@ -28,6 +28,12 @@ export interface GroupEntry {
   item_paths: string[];
 }
 
+export interface StatsSample {
+  cpu_percent: number;
+  mem_used_bytes: number;
+  mem_total_bytes: number;
+}
+
 // ---- 命令 ----
 
 export async function ping(): Promise<string> {
@@ -52,6 +58,10 @@ export async function desktopMenuSet(enabled: boolean): Promise<boolean> {
 
 export async function desktopMenuGet(): Promise<boolean> {
   return invoke("desktop_menu_get");
+}
+
+export async function statsSubscribe(enabled: boolean): Promise<number> {
+  return invoke("stats_subscribe", { enabled });
 }
 
 export async function containerListItems(): Promise<ContainerItem[]> {
