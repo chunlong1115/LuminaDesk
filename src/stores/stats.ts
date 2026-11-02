@@ -29,8 +29,13 @@ export function toSample(s: StatsSample): CpuMemSample {
 }
 
 /** 订阅引用计数与事件监听句柄（模块级；跨组件共享一份 Rust 采样线程） */
-let refCount = 0;
+let refCount: number = 0;
 let unlisten: (() => void) | null = null;
+
+/** 读取当前引用计数（函数边界阻断 TS 流收窄：异步闭包内回读需真实值） */
+function refCountNow(): number {
+  return refCount;
+}
 
 /** 仅测试用：重置订阅状态 */
 export function _resetForTest(): void {
@@ -49,7 +54,7 @@ export const useStats = create<StatsState>((set) => ({
     void (async () => {
       try {
         await statsSubscribe(true);
-        if (refCount === 0) {
+        if (refCountNow() === 0) {
           // 订阅在途时已全部退订（StrictMode 双挂载等）→ 立即补退订
           void statsSubscribe(false).catch(() => {});
           return;
@@ -57,7 +62,7 @@ export const useStats = create<StatsState>((set) => ({
         const off = await onEvent<StatsSample>(EVENTS.statsSample, (p) => {
           useStats.getState().push(toSample(p));
         });
-        if (refCount === 0) {
+        if (refCountNow() === 0) {
           // 监听建立完成前已全部退订 → 摘除并停摆
           off();
           void statsSubscribe(false).catch(() => {});
@@ -66,7 +71,7 @@ export const useStats = create<StatsState>((set) => ({
         unlisten = off;
       } catch (e) {
         console.error("stats subscribe failed", e);
-        if (refCount > 0) refCount -= 1;
+        if (refCountNow() > 0) refCount -= 1;
       }
     })();
   },
