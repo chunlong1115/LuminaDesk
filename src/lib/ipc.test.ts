@@ -35,7 +35,7 @@ describe("ipc 封装", () => {
       EVENTS.statsSample,
       expect.any(Function),
     );
-    const handler = listenMock.mock.calls[0][1] as (e: { payload: unknown }) => void;
+    const handler = listenMock.mock.calls[0]![1] as (e: { payload: unknown }) => void;
     handler({ payload: { cpu_percent: 42 } });
     expect(cb).toHaveBeenCalledWith({ cpu_percent: 42 });
     unlisten();
