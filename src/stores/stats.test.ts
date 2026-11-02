@@ -134,7 +134,7 @@ describe("stats 订阅接线", () => {
       () => new Promise<() => void>((resolve) => (resolveListen = resolve)),
     );
     useStats.getState().subscribe();
-    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalled());
+    await vi.waitFor(() => expect(listenMock).toHaveBeenCalled());
     useStats.getState().unsubscribe();
     resolveListen(off);
     await vi.waitFor(() =>
