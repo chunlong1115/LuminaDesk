@@ -15,6 +15,7 @@ import {
   type GroupEntry,
 } from "../../lib/ipc";
 import { diagTick, shouldEnableDiag } from "../../lib/diag";
+import { WidgetsLayer } from "../../components/widgets/WidgetsLayer";
 import { dropEntries, resolvePos, snapPos, type Pos } from "./dragMath";
 import styles from "./ContainerPage.module.css";
 
@@ -309,6 +310,9 @@ export function ContainerPage() {
         if (e.target === e.currentTarget) onContextMenu(e);
       }}
     >
+      {/* 小组件层（默认合并进容器；空白区事件穿透，不影响图标框选/拖拽） */}
+      <WidgetsLayer />
+
       {items.map((item) => {
         const isDragged = dragRef.current?.path === item.path;
         const pos = isDragged && dragPos ? dragPos : posOf(item);
