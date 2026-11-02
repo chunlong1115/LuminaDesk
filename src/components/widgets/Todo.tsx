@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { setActiveIfWidgets } from "../../lib/windowRole";
 import { isValidTodoText, useTodos } from "../../stores/todo";
 import styles from "./widgets.module.css";
 
@@ -27,6 +28,8 @@ export function Todo() {
           onKeyDown={(e) => {
             if (e.key === "Enter") submit();
           }}
+          onFocus={() => setActiveIfWidgets(window.location.search, true)}
+          onBlur={() => setActiveIfWidgets(window.location.search, false)}
         />
         <button className={styles.todoAdd} onClick={submit} title="添加">
           ＋

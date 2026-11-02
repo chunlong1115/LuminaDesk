@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { setActiveIfWidgets } from "../../lib/windowRole";
 import { clampNoteSize, NOTES_ORIGIN, useNotes, type NoteItem } from "../../stores/notes";
 import styles from "./widgets.module.css";
 
@@ -61,6 +62,7 @@ function NoteCard({ note }: { note: NoteItem }) {
     <div
       className={styles.note}
       style={{ left: note.x, top: note.y, width: note.w, height: note.h }}
+      data-hit-region=""
       onPointerDown={(e) => onDown(e, "move")}
       onPointerMove={onMove}
       onPointerUp={onUp}
@@ -82,6 +84,8 @@ function NoteCard({ note }: { note: NoteItem }) {
         placeholder="记点什么…"
         onChange={(e) => update(note.id, { text: e.target.value })}
         onPointerDown={(e) => e.stopPropagation()}
+        onFocus={() => setActiveIfWidgets(window.location.search, true)}
+        onBlur={() => setActiveIfWidgets(window.location.search, false)}
       />
       <div className={styles.noteResize} onPointerDown={(e) => onDown(e, "resize")} />
     </div>
@@ -100,6 +104,7 @@ export function Notes() {
       <button
         className={styles.noteAdd}
         style={{ left: NOTES_ORIGIN.x, top: NOTES_ORIGIN.y - 34 }}
+        data-hit-region=""
         onClick={add}
       >
         ＋ 新便签

@@ -36,6 +36,7 @@ export function WidgetsLayer() {
             key={w.id}
             className={`${styles.card} ${w.kind === "todo" ? styles.cardTodo : ""}`}
             style={{ left: w.x, top: w.y }}
+            data-hit-region=""
           >
             <Cmp />
           </div>
