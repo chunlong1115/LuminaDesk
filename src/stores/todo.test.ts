@@ -19,25 +19,25 @@ describe("useTodos 待办状态", () => {
     useTodos.getState().add("写周报");
     const todos = useTodos.getState().todos;
     expect(todos).toHaveLength(2);
-    expect(todos[0].text).toBe("买牛奶");
-    expect(todos[0].done).toBe(false);
-    expect(todos[0].id).not.toBe(todos[1].id);
+    expect(todos[0]!.text).toBe("买牛奶");
+    expect(todos[0]!.done).toBe(false);
+    expect(todos[0]!.id).not.toBe(todos[1]!.id);
   });
 
   it("勾选切换 done", () => {
     useTodos.getState().add("a");
-    const id = useTodos.getState().todos[0].id;
+    const id = useTodos.getState().todos[0]!.id;
     useTodos.getState().toggle(id);
-    expect(useTodos.getState().todos[0].done).toBe(true);
+    expect(useTodos.getState().todos[0]!.done).toBe(true);
     useTodos.getState().toggle(id);
-    expect(useTodos.getState().todos[0].done).toBe(false);
+    expect(useTodos.getState().todos[0]!.done).toBe(false);
   });
 
   it("删除仅移除目标", () => {
     useTodos.getState().add("a");
     useTodos.getState().add("b");
     const [a, b] = useTodos.getState().todos;
-    useTodos.getState().remove(a.id);
-    expect(useTodos.getState().todos.map((t) => t.id)).toEqual([b.id]);
+    useTodos.getState().remove(a!.id);
+    expect(useTodos.getState().todos.map((t) => t.id)).toEqual([b!.id]);
   });
 });
