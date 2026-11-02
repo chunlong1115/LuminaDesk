@@ -21,16 +21,16 @@ describe("useNotes 便签状态", () => {
     useNotes.getState().add();
     const notes = useNotes.getState().notes;
     expect(notes).toHaveLength(2);
-    expect(notes[0].id).not.toBe(notes[1].id);
-    expect(notes[1].x - notes[0].x).toBe(28);
-    expect(notes[1].y - notes[0].y).toBe(28);
+    expect(notes[0]!.id).not.toBe(notes[1]!.id);
+    expect(notes[1]!.x - notes[0]!.x).toBe(28);
+    expect(notes[1]!.y - notes[0]!.y).toBe(28);
   });
 
   it("更新：合并 patch，不动其他字段", () => {
     useNotes.getState().add();
-    const id = useNotes.getState().notes[0].id;
+    const id = useNotes.getState().notes[0]!.id;
     useNotes.getState().update(id, { text: "hello", x: 300 });
-    const n = useNotes.getState().notes[0];
+    const n = useNotes.getState().notes[0]!;
     expect(n.text).toBe("hello");
     expect(n.x).toBe(300);
     expect(n.w).toBe(200);
@@ -40,7 +40,7 @@ describe("useNotes 便签状态", () => {
     useNotes.getState().add();
     useNotes.getState().add();
     const [a, b] = useNotes.getState().notes;
-    useNotes.getState().remove(a.id);
-    expect(useNotes.getState().notes.map((n) => n.id)).toEqual([b.id]);
+    useNotes.getState().remove(a!.id);
+    expect(useNotes.getState().notes.map((n) => n.id)).toEqual([b!.id]);
   });
 });
