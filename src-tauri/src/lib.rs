@@ -140,6 +140,11 @@ fn desktop_menu_get(app: AppHandle) -> bool {
     load_settings(&app).desktop_menu_enabled
 }
 
+#[tauri::command]
+fn stats_subscribe(app: AppHandle, enabled: bool) -> usize {
+    stats::set_subscribed(app, enabled)
+}
+
 pub fn run() {
     let _app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -170,6 +175,7 @@ pub fn run() {
             layer_detach_now,
             desktop_menu_set,
             desktop_menu_get,
+            stats_subscribe,
             commands::container_list_items,
             commands::container_move_item,
             commands::container_save_layout,
