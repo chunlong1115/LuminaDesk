@@ -9,6 +9,7 @@ mod persistence;
 mod shell_window;
 mod stats;
 mod utils;
+mod widgets_layer;
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
@@ -145,6 +146,34 @@ fn stats_subscribe(app: AppHandle, enabled: bool) -> usize {
     stats::set_subscribed(app, enabled)
 }
 
+#[tauri::command]
+fn hit_test_set_regions(regions: Vec<utils::hit_test::HitRegion>) {
+    utils::hit_test::set_regions(regions);
+}
+
+#[tauri::command]
+fn widgets_set_active(window: tauri::Window, active: bool) {
+    if let Ok(h) = window.hwnd() {
+        widgets_layer::set_active(
+            windows::Win32::Foundation::HWND(h.0 as *mut core::ffi::c_void),
+            active,
+        );
+    }
+}
+
+#[tauri::command]
+fn system_set_widgets_above_icons(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    let mut s = load_settings(&app);
+    s.widgets_in_container = !enabled;
+    save_settings(&app, &s)?;
+    if enabled {
+        widgets_layer::create(&app)?;
+    } else {
+        widgets_layer::destroy(&app)?;
+    }
+    Ok(enabled)
+}
+
 pub fn run() {
     let _app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -176,6 +205,9 @@ pub fn run() {
             desktop_menu_set,
             desktop_menu_get,
             stats_subscribe,
+            hit_test_set_regions,
+            widgets_set_active,
+            system_set_widgets_above_icons,
             commands::container_list_items,
             commands::container_move_item,
             commands::container_save_layout,
@@ -242,7 +274,14 @@ pub fn run() {
                 desktop_menu::enable();
             }
 
-            // 7. 打开控制窗口（产品化改为纯托盘懒加载；开发期默认打开便于验收）
+            // 7. 浮于图标之上模式：按持久化设置重建小组件层窗口
+            if !load_settings(app.handle()).widgets_in_container {
+                if let Err(e) = widgets_layer::create(app.handle()) {
+                    log::warn!("widgets layer startup failed: {e}");
+                }
+            }
+
+            // 8. 打开控制窗口（产品化改为纯托盘懒加载；开发期默认打开便于验收）
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = create_control_window(&handle) {
