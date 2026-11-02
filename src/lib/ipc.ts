@@ -34,6 +34,14 @@ export interface StatsSample {
   mem_total_bytes: number;
 }
 
+/** 浮层可点击区（物理像素、客户区坐标；与 Rust utils::hit_test::HitRegion 对齐） */
+export interface HitRegion {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 // ---- 命令 ----
 
 export async function ping(): Promise<string> {
@@ -62,6 +70,21 @@ export async function desktopMenuGet(): Promise<boolean> {
 
 export async function statsSubscribe(enabled: boolean): Promise<number> {
   return invoke("stats_subscribe", { enabled });
+}
+
+/** 浮层：上报最新可点击区（整体替换，物理像素） */
+export async function hitTestSetRegions(regions: HitRegion[]): Promise<void> {
+  return invoke("hit_test_set_regions", { regions });
+}
+
+/** 浮层：便签/待办输入激活切换（摘/挂 WS_EX_NOACTIVATE + 抢键盘焦点） */
+export async function widgetsSetActive(active: boolean): Promise<void> {
+  return invoke("widgets_set_active", { active });
+}
+
+/** 浮层模式开关：「浮于图标之上」=true 创建 widgets-0 窗口，false 销毁回容器模式 */
+export async function systemSetWidgetsAboveIcons(enabled: boolean): Promise<boolean> {
+  return invoke("system_set_widgets_above_icons", { enabled });
 }
 
 export async function containerListItems(): Promise<ContainerItem[]> {
