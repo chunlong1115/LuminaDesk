@@ -212,7 +212,7 @@ mod tests {
         let cur = CpuTimes { busy: 50, idle: 100 };
         let p = cpu_percent_delta(prev, cur);
         assert!(p.is_finite() && (0.0..=100.0).contains(&p));
-        // d_busy=101, d_idle=200 → 101/301*100 ≈ 33.55
-        assert!((p as f64 - 10100.0 / 301.0).abs() < 0.001);
+        // d_busy=101, d_idle=201 → 101/302*100 ≈ 33.44
+        assert!((p as f64 - 10100.0 / 302.0).abs() < 0.001);
     }
 }
