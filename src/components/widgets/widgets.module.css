@@ -121,3 +121,98 @@
 .noteAdd:hover {
   background: rgba(125, 180, 255, 0.18);
 }
+
+.todo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+}
+
+.todoInputRow {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.todoInput {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
+  border-radius: 6px;
+  color: #eef4ff;
+  font-size: 12px;
+  outline: none;
+  user-select: text;
+}
+
+.todoInput:focus {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.todoAdd {
+  padding: 4px 10px;
+  background: rgba(125, 180, 255, 0.16);
+  border: none;
+  border-radius: 6px;
+  color: #cfe2ff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.todoAdd:hover {
+  background: rgba(125, 180, 255, 0.3);
+}
+
+.todoList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.todoItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 2px;
+  font-size: 12px;
+  color: #eef4ff;
+}
+
+.todoLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.todoDone {
+  text-decoration: line-through;
+  color: #6d7f9e;
+}
+
+.todoRemove {
+  background: none;
+  border: none;
+  color: #9fb4d8;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.todoItem:hover .todoRemove {
+  visibility: visible;
+}
+
+.todoRemove:hover {
+  color: #ff9d9d;
+}
