@@ -244,10 +244,12 @@ mod tests {
 
     static SEQ: AtomicU32 = AtomicU32::new(0);
 
-    /// 每个测试独立的子目录（测试并行运行，禁止共享目录）
+    /// 每个测试独立的子目录（测试并行运行，禁止共享目录）。
+    /// 目录名确定性复用 → 先清上次异常中断的残留，再创建
     fn unique_dir(name: &str) -> PathBuf {
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
         let d = std::env::temp_dir().join(format!("lumina-widgets-{name}-{n}"));
+        let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
     }
@@ -345,6 +347,7 @@ mod tests {
         };
         save_store_at(&path, &store).unwrap();
         assert_eq!(load_store_at(&path), Some(store));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -362,5 +365,6 @@ mod tests {
         save_store_at(&bak, &WidgetStore { widgets: vec![cfg("date", 9, 9)], ..Default::default() }).unwrap();
         let store = load_store_at(&path).unwrap();
         assert_eq!(store.widgets, vec![cfg("date", 9, 9)]);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
