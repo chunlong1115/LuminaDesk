@@ -22,6 +22,6 @@ C8a ipc 封装 → C8b lib/format → C8c stats store 接线 → C8d 时钟/日�
 
 ## 遗留（后续任务）
 
-- 便签/待办内容持久化：待 Rust 便签待办 CRUD 命令（阶段 3 任务 4 前）
-- 组件管理页（增删/位置/模式切换）+ widgets.json 持久化：任务 4
+- 便签/待办内容持久化：✅ 完成（Rust CRUD 命令 C10a，见 2026-11-03-phase3-widget-manager.md）
+- 组件管理页（增删/位置/模式切换）+ widgets.json 持久化：✅ 任务 4 完成（C10a-c，见 2026-11-03-phase3-widget-manager.md）
 - 「浮于图标之上」模式：widgets 窗口 + WM_NCHITTEST 穿透：✅ 任务 3 完成（见 2026-11-02-phase3-widgets-layer.md，C9a-g）

@@ -23,4 +23,5 @@ C9a hit_test 纯逻辑 → C9b 浮层窗口落地 → C9c 命令接线 → C9d i
 ## 遗留（后续任务）
 
 - 多显示器拓扑（v1 仅主显示器）
-- 控制台模式切换开关 UI：任务 4（组件管理页 + widgets.json + 便签/待办 Rust CRUD）
+- 控制台模式切换开关 UI：✅ 任务 4 完成（C10c 管理面板，见 2026-11-03-phase3-widget-manager.md）
+- 模式切换的容器窗口联动（浮层模式双窗口重复渲染）：待 4e 收尾（详见 widget-manager 文档遗留）
