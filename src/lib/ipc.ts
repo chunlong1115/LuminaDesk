@@ -114,6 +114,11 @@ export async function systemSetWidgetsAboveIcons(enabled: boolean): Promise<bool
   return invoke("system_set_widgets_above_icons", { enabled });
 }
 
+/** 浮层模式读取（与 systemSetWidgetsAboveIcons 语义一致） */
+export async function widgetsModeGet(): Promise<boolean> {
+  return invoke("widgets_mode_get");
+}
+
 // ---- 组件配置（widgets.json） ----
 
 export async function widgetsList(): Promise<WidgetConfig[]> {

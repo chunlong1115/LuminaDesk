@@ -70,3 +70,62 @@
   flex-direction: column;
   gap: 6px;
 }
+
+/* ---- 组件管理 ---- */
+
+.widgetAddRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.widgetAddRow select {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8f0ff;
+}
+
+.widgetAddRow button,
+.widgetRemove {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8f0ff;
+  cursor: pointer;
+}
+
+.widgetList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.widgetRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.widgetKind {
+  width: 72px;
+  flex-shrink: 0;
+}
+
+.widgetField {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.widgetField input {
+  width: 56px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8f0ff;
+}

@@ -174,6 +174,12 @@ fn system_set_widgets_above_icons(app: AppHandle, enabled: bool) -> Result<bool,
     Ok(enabled)
 }
 
+/// 组件模式读取：「浮于图标之上」=true（widgets_in_container 持久化值的取反）
+#[tauri::command]
+fn widgets_mode_get(app: AppHandle) -> bool {
+    !load_settings(&app).widgets_in_container
+}
+
 pub fn run() {
     let _app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -208,6 +214,7 @@ pub fn run() {
             hit_test_set_regions,
             widgets_set_active,
             system_set_widgets_above_icons,
+            widgets_mode_get,
             commands::container_list_items,
             commands::container_move_item,
             commands::container_save_layout,

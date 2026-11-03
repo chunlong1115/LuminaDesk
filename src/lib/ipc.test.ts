@@ -14,6 +14,7 @@ import {
   todosRemove,
   todosUpsert,
   widgetsList,
+  widgetsModeGet,
   widgetsRemove,
   widgetsSetActive,
   widgetsUpsert,
@@ -66,6 +67,12 @@ describe("ipc 封装", () => {
     expect(invokeMock).toHaveBeenCalledWith("system_set_widgets_above_icons", {
       enabled: true,
     });
+  });
+
+  it("widgetsModeGet 读取浮层模式", async () => {
+    invokeMock.mockResolvedValue(true);
+    await expect(widgetsModeGet()).resolves.toBe(true);
+    expect(invokeMock).toHaveBeenCalledWith("widgets_mode_get");
   });
 
   it("widgets 三命令映射（list/upsert/remove）", async () => {
