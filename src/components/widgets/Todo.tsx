@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { setActiveIfWidgets } from "../../lib/windowRole";
 import { isValidTodoText, useTodos } from "../../stores/todo";
 import styles from "./widgets.module.css";
@@ -10,6 +10,11 @@ export function Todo() {
   const toggle = useTodos((s) => s.toggle);
   const remove = useTodos((s) => s.remove);
   const [text, setText] = useState("");
+
+  // 水合：从 Rust 加载待办列表（幂等）
+  useEffect(() => {
+    useTodos.getState().hydrate();
+  }, []);
 
   const submit = () => {
     if (!isValidTodoText(text)) return;

@@ -1,5 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { isValidTodoText, useTodos } from "./todo";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+import { isValidTodoText, _resetForTest, useTodos } from "./todo";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
 describe("isValidTodoText 空文本校验", () => {
   it("空白拒绝、正常通过", () => {
@@ -11,7 +16,10 @@ describe("isValidTodoText 空文本校验", () => {
 
 describe("useTodos 待办状态", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue([]);
     useTodos.setState({ todos: [] });
+    _resetForTest();
   });
 
   it("新增：trim 后入库、id 唯一、默认未完成", () => {
@@ -39,5 +47,53 @@ describe("useTodos 待办状态", () => {
     const [a, b] = useTodos.getState().todos;
     useTodos.getState().remove(a!.id);
     expect(useTodos.getState().todos.map((t) => t.id)).toEqual([b!.id]);
+  });
+});
+
+describe("useTodos Rust 持久化接线", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invokeMock.mockResolvedValue([]);
+    useTodos.setState({ todos: [] });
+    _resetForTest();
+  });
+
+  it("hydrate 从 Rust 加载待办列表", async () => {
+    const rustList = [{ id: "t1", text: "买牛奶", done: true }];
+    invokeMock.mockResolvedValue(rustList);
+    useTodos.getState().hydrate();
+    await vi.waitFor(() => {
+      expect(useTodos.getState().todos).toEqual(rustList);
+    });
+    expect(invokeMock).toHaveBeenCalledWith("todos_list");
+  });
+
+  it("add 落盘新待办（trim 后文本）", async () => {
+    useTodos.getState().add(" 买牛奶 ");
+    await vi.waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("todos_upsert", {
+        todo: expect.objectContaining({ text: "买牛奶", done: false }),
+      });
+    });
+  });
+
+  it("toggle 落盘勾选态", async () => {
+    useTodos.setState({ todos: [{ id: "t1", text: "a", done: false }] });
+    vi.clearAllMocks();
+    useTodos.getState().toggle("t1");
+    await vi.waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("todos_upsert", {
+        todo: expect.objectContaining({ id: "t1", done: true }),
+      });
+    });
+  });
+
+  it("remove 落盘删除", async () => {
+    useTodos.setState({ todos: [{ id: "t1", text: "a", done: false }] });
+    vi.clearAllMocks();
+    useTodos.getState().remove("t1");
+    await vi.waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("todos_remove", { id: "t1" });
+    });
   });
 });

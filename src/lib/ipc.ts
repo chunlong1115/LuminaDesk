@@ -42,6 +42,33 @@ export interface HitRegion {
   h: number;
 }
 
+export type WidgetKind = "clock" | "date" | "notes" | "todo" | "cpuMem";
+
+/** 组件配置（与 Rust commands::widgets::WidgetConfig 对齐） */
+export interface WidgetConfig {
+  id: string;
+  kind: WidgetKind;
+  x: number;
+  y: number;
+}
+
+/** 便签（与 Rust commands::widgets::NoteItem 对齐） */
+export interface NoteItem {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+}
+
+/** 待办（与 Rust commands::widgets::TodoItem 对齐） */
+export interface TodoItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
 // ---- 命令 ----
 
 export async function ping(): Promise<string> {
@@ -85,6 +112,48 @@ export async function widgetsSetActive(active: boolean): Promise<void> {
 /** 浮层模式开关：「浮于图标之上」=true 创建 widgets-0 窗口，false 销毁回容器模式 */
 export async function systemSetWidgetsAboveIcons(enabled: boolean): Promise<boolean> {
   return invoke("system_set_widgets_above_icons", { enabled });
+}
+
+// ---- 组件配置（widgets.json） ----
+
+export async function widgetsList(): Promise<WidgetConfig[]> {
+  return invoke("widgets_list");
+}
+
+export async function widgetsUpsert(config: WidgetConfig): Promise<WidgetConfig[]> {
+  return invoke("widgets_upsert", { config });
+}
+
+export async function widgetsRemove(id: string): Promise<WidgetConfig[]> {
+  return invoke("widgets_remove", { id });
+}
+
+// ---- 便签 CRUD ----
+
+export async function notesList(): Promise<NoteItem[]> {
+  return invoke("notes_list");
+}
+
+export async function notesUpsert(note: NoteItem): Promise<NoteItem[]> {
+  return invoke("notes_upsert", { note });
+}
+
+export async function notesRemove(id: string): Promise<NoteItem[]> {
+  return invoke("notes_remove", { id });
+}
+
+// ---- 待办 CRUD ----
+
+export async function todosList(): Promise<TodoItem[]> {
+  return invoke("todos_list");
+}
+
+export async function todosUpsert(todo: TodoItem): Promise<TodoItem[]> {
+  return invoke("todos_upsert", { todo });
+}
+
+export async function todosRemove(id: string): Promise<TodoItem[]> {
+  return invoke("todos_remove", { id });
 }
 
 export async function containerListItems(): Promise<ContainerItem[]> {

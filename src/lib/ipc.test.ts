@@ -4,10 +4,19 @@ import { listen } from "@tauri-apps/api/event";
 import {
   EVENTS,
   hitTestSetRegions,
+  notesList,
+  notesRemove,
+  notesUpsert,
   onEvent,
   statsSubscribe,
   systemSetWidgetsAboveIcons,
+  todosList,
+  todosRemove,
+  todosUpsert,
+  widgetsList,
+  widgetsRemove,
   widgetsSetActive,
+  widgetsUpsert,
 } from "./ipc";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -57,6 +66,40 @@ describe("ipc 封装", () => {
     expect(invokeMock).toHaveBeenCalledWith("system_set_widgets_above_icons", {
       enabled: true,
     });
+  });
+
+  it("widgets 三命令映射（list/upsert/remove）", async () => {
+    invokeMock.mockResolvedValue([]);
+    await widgetsList();
+    await widgetsUpsert({ id: "clock", kind: "clock", x: 1, y: 2 });
+    await widgetsRemove("clock");
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "widgets_list");
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "widgets_upsert", {
+      config: { id: "clock", kind: "clock", x: 1, y: 2 },
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(3, "widgets_remove", { id: "clock" });
+  });
+
+  it("notes 三命令映射（list/upsert/remove）", async () => {
+    invokeMock.mockResolvedValue([]);
+    const note = { id: "n1", x: 0, y: 0, w: 200, h: 160, text: "hi" };
+    await notesList();
+    await notesUpsert(note);
+    await notesRemove("n1");
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "notes_list");
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "notes_upsert", { note });
+    expect(invokeMock).toHaveBeenNthCalledWith(3, "notes_remove", { id: "n1" });
+  });
+
+  it("todos 三命令映射（list/upsert/remove）", async () => {
+    invokeMock.mockResolvedValue([]);
+    const todo = { id: "t1", text: "x", done: false };
+    await todosList();
+    await todosUpsert(todo);
+    await todosRemove("t1");
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "todos_list");
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "todos_upsert", { todo });
+    expect(invokeMock).toHaveBeenNthCalledWith(3, "todos_remove", { id: "t1" });
   });
 
   it("onEvent 注册监听、透传 payload，并返回取消函数", async () => {

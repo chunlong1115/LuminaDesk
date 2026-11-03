@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { useEffect, type ComponentType } from "react";
 import { useWidgets, type WidgetKind } from "../../stores/widgets";
 import { Clock } from "./Clock";
 import { CpuMem } from "./CpuMem";
@@ -23,6 +23,11 @@ const RENDERERS: Record<WidgetKind, ComponentType> = {
  */
 export function WidgetsLayer() {
   const widgets = useWidgets((s) => s.widgets);
+
+  // 水合：从 Rust 加载配置 + 订阅 widgets-changed 广播（幂等，StrictMode 双挂载安全）
+  useEffect(() => {
+    useWidgets.getState().hydrate();
+  }, []);
   return (
     <div className={styles.layer}>
       {widgets.map((w) => {

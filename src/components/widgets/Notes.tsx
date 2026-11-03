@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { setActiveIfWidgets } from "../../lib/windowRole";
 import { clampNoteSize, NOTES_ORIGIN, useNotes, type NoteItem } from "../../stores/notes";
 import styles from "./widgets.module.css";
@@ -96,6 +96,11 @@ function NoteCard({ note }: { note: NoteItem }) {
 export function Notes() {
   const notes = useNotes((s) => s.notes);
   const add = useNotes((s) => s.add);
+
+  // 水合：从 Rust 加载便签列表（幂等）
+  useEffect(() => {
+    useNotes.getState().hydrate();
+  }, []);
   return (
     <>
       {notes.map((n) => (
