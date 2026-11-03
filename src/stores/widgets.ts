@@ -1,5 +1,12 @@
 import { create } from "zustand";
-import { EVENTS, onEvent, widgetsList, type WidgetConfig, type WidgetKind } from "../lib/ipc";
+import {
+  EVENTS,
+  onEvent,
+  widgetsList,
+  widgetsModeGet,
+  type WidgetConfig,
+  type WidgetKind,
+} from "../lib/ipc";
 
 export type { WidgetConfig, WidgetKind };
 
@@ -14,8 +21,10 @@ export const DEFAULT_WIDGETS: WidgetConfig[] = [
 
 interface WidgetsState {
   widgets: WidgetConfig[];
+  /** 「浮于图标之上」模式：容器窗口据此隐藏组件层（浮层窗口忽略该值） */
+  aboveIcons: boolean;
   setWidgets: (widgets: WidgetConfig[]) => void;
-  /** 从 Rust 加载配置并订阅 widgets-changed 广播（幂等；跨窗口配置同步） */
+  /** 从 Rust 加载配置/模式并订阅 widgets-changed、widgets-mode-changed 广播（幂等） */
   hydrate: () => void;
 }
 
@@ -30,16 +39,21 @@ export function _resetForTest(): void {
  *  管理页写 → Rust 落盘 → emit 广播 → 容器/浮层窗口经监听更新） */
 export const useWidgets = create<WidgetsState>((set) => ({
   widgets: DEFAULT_WIDGETS,
+  aboveIcons: false,
   setWidgets: (widgets) => set({ widgets }),
   hydrate: () => {
     if (hydrated) return;
     hydrated = true;
     void (async () => {
       try {
-        const list = await widgetsList();
-        set({ widgets: list });
+        const [list, mode] = await Promise.all([widgetsList(), widgetsModeGet()]);
+        set({ widgets: list, aboveIcons: mode });
         await onEvent<WidgetConfig[]>(EVENTS.widgetsChanged, (payload) => {
           set({ widgets: payload });
+        });
+        // 模式变更广播（控制台切换开关）：容器窗口隐藏/显示组件层
+        await onEvent<boolean>(EVENTS.widgetsModeChanged, (payload) => {
+          set({ aboveIcons: payload });
         });
       } catch (e) {
         console.error("widgets hydrate failed", e);

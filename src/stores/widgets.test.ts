@@ -40,25 +40,39 @@ describe("useWidgets 配置状态", () => {
 describe("useWidgets Rust 持久化接线", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    invokeMock.mockResolvedValue([]);
+    // hydrate 同时拉配置与模式：按命令名分别返回
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "widgets_list") return Promise.resolve([]);
+      if (cmd === "widgets_mode_get") return Promise.resolve(false);
+      return Promise.resolve(undefined);
+    });
     listenMock.mockResolvedValue(() => {});
-    useWidgets.setState({ widgets: DEFAULT_WIDGETS });
+    useWidgets.setState({ widgets: DEFAULT_WIDGETS, aboveIcons: false });
     _resetForTest();
   });
 
-  it("hydrate 加载 Rust 配置并订阅 widgets-changed 广播", async () => {
+  it("hydrate 加载 Rust 配置与模式并订阅两个广播", async () => {
     const rustList = [{ id: "clock", kind: "clock" as const, x: 10, y: 20 }];
-    invokeMock.mockResolvedValue(rustList);
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "widgets_list") return Promise.resolve(rustList);
+      if (cmd === "widgets_mode_get") return Promise.resolve(true);
+      return Promise.resolve(undefined);
+    });
     useWidgets.getState().hydrate();
     await vi.waitFor(() => {
       expect(useWidgets.getState().widgets).toEqual(rustList);
     });
+    expect(useWidgets.getState().aboveIcons).toBe(true);
     expect(invokeMock).toHaveBeenCalledWith("widgets_list");
+    expect(invokeMock).toHaveBeenCalledWith("widgets_mode_get");
     expect(listenMock).toHaveBeenCalledWith("lumina://widgets-changed", expect.any(Function));
+    expect(listenMock).toHaveBeenCalledWith(
+      "lumina://widgets-mode-changed",
+      expect.any(Function),
+    );
   });
 
-  it("广播到达后镜像更新", async () => {
-    invokeMock.mockResolvedValue([]);
+  it("widgets-changed 广播到达后镜像更新", async () => {
     useWidgets.getState().hydrate();
     await vi.waitFor(() => {
       expect(listenMock).toHaveBeenCalled();
@@ -69,11 +83,24 @@ describe("useWidgets Rust 持久化接线", () => {
     expect(useWidgets.getState().widgets).toEqual(broadcast);
   });
 
-  it("hydrate 幂等：重复调用只 invoke 一次", async () => {
+  it("widgets-mode-changed 广播更新 aboveIcons（容器窗口据此隐藏/显示组件层）", async () => {
+    useWidgets.getState().hydrate();
+    await vi.waitFor(() => {
+      expect(listenMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    const handler = listenMock.mock.calls[1]![1] as (e: { payload: unknown }) => void;
+    handler({ payload: true });
+    expect(useWidgets.getState().aboveIcons).toBe(true);
+    handler({ payload: false });
+    expect(useWidgets.getState().aboveIcons).toBe(false);
+  });
+
+  it("hydrate 幂等：重复调用配置只 invoke 一次", async () => {
     useWidgets.getState().hydrate();
     useWidgets.getState().hydrate();
     await vi.waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledTimes(1);
+      expect(invokeMock).toHaveBeenCalled();
     });
+    expect(invokeMock.mock.calls.filter((c) => c[0] === "widgets_list")).toHaveLength(1);
   });
 });

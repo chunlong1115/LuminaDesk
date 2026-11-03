@@ -11,7 +11,7 @@ mod stats;
 mod utils;
 mod widgets_layer;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 /// 控制窗口：关闭即销毁（destroy，非 hide）——省内存（WebView2 视图不驻留）
@@ -161,6 +161,9 @@ fn widgets_set_active(window: tauri::Window, active: bool) {
     }
 }
 
+/// 组件模式变更广播（「浮于图标之上」开关）：容器窗口据此隐藏/显示组件层
+const WIDGETS_MODE_CHANGED: &str = "lumina://widgets-mode-changed";
+
 #[tauri::command]
 fn system_set_widgets_above_icons(app: AppHandle, enabled: bool) -> Result<bool, String> {
     let mut s = load_settings(&app);
@@ -171,6 +174,8 @@ fn system_set_widgets_above_icons(app: AppHandle, enabled: bool) -> Result<bool,
     } else {
         widgets_layer::destroy(&app)?;
     }
+    // 模式变更广播：容器窗口按模式隐藏/显示组件层（防双窗口重复渲染）
+    let _ = app.emit(WIDGETS_MODE_CHANGED, enabled);
     Ok(enabled)
 }
 

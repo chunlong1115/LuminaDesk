@@ -218,6 +218,7 @@ export const EVENTS = {
   fsChanged: "lumina://fs-changed",
   containersChanged: "lumina://containers-changed",
   widgetsChanged: "lumina://widgets-changed",
+  widgetsModeChanged: "lumina://widgets-mode-changed",
   reattachLimit: "lumina://reattach-limit",
   desktopMenuClick: "lumina://desktop-menu-click",
 } as const;

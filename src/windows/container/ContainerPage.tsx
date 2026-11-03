@@ -16,6 +16,7 @@ import {
 } from "../../lib/ipc";
 import { diagTick, shouldEnableDiag } from "../../lib/diag";
 import { WidgetsLayer } from "../../components/widgets/WidgetsLayer";
+import { useWidgets } from "../../stores/widgets";
 import { dropEntries, resolvePos, snapPos, type Pos } from "./dragMath";
 import styles from "./ContainerPage.module.css";
 
@@ -44,6 +45,13 @@ export function ContainerPage() {
   const [groups, setGroups] = useState<GroupEntry[]>([]);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [groupSubmenu, setGroupSubmenu] = useState(false);
+  // 浮层模式开启时容器窗口隐藏组件层（浮层窗口负责渲染，防双窗口重复显示）
+  const aboveIcons = useWidgets((s) => s.aboveIcons);
+
+  // 水合必须在容器窗口触发（浮层模式下 WidgetsLayer 不挂载，无法借其订阅广播）
+  useEffect(() => {
+    useWidgets.getState().hydrate();
+  }, []);
 
   const dragRef = useRef<{
     startX: number;
@@ -310,8 +318,9 @@ export function ContainerPage() {
         if (e.target === e.currentTarget) onContextMenu(e);
       }}
     >
-      {/* 小组件层（默认合并进容器；空白区事件穿透，不影响图标框选/拖拽） */}
-      <WidgetsLayer />
+      {/* 小组件层（默认合并进容器；空白区事件穿透，不影响图标框选/拖拽）。
+          浮层模式开启时隐藏——组件由 widgets-0 浮层窗口渲染 */}
+      {!aboveIcons && <WidgetsLayer />}
 
       {items.map((item) => {
         const isDragged = dragRef.current?.path === item.path;
