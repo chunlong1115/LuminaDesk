@@ -218,7 +218,16 @@ pub fn run() {
             commands::group_list,
             commands::group_create,
             commands::group_add_item,
-            commands::group_remove_item
+            commands::group_remove_item,
+            commands::widgets_list,
+            commands::widgets_upsert,
+            commands::widgets_remove,
+            commands::notes_list,
+            commands::notes_upsert,
+            commands::notes_remove,
+            commands::todos_list,
+            commands::todos_upsert,
+            commands::todos_remove
         ])
         .setup(|app| {
             // 1. 隐藏 shell 监听窗口（TaskbarCreated/DisplayChange/SettingChange/PowerBroadcast）
