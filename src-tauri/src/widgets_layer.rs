@@ -1,7 +1,12 @@
 //! 「浮于图标之上」小组件层窗口（widgets-0）：独立顶层透明窗口，位于桌面图标层之上、
 //! 普通窗口之下（HWND_BOTTOM）；WM_NCHITTEST 非组件区返回 HTTRANSPARENT 点击穿透
 //! （命中判定与共享区域在 utils::hit_test），组件区正常接收鼠标事件。
-//! 便签/待办输入时临时摘 WS_EX_NOACTIVATE 抢键盘焦点，WM_KILLFOCUS 自动恢复免激活。
+//! 便签/待办输入时 SetForegroundWindow 抢键盘焦点后立即置底收回桌面带：物理键盘只
+//! 路由到前台线程的焦点窗口，必须激活；但 z 序与激活态正交——窗口保持前台/焦点继续
+//! 收键，同时待在桌面带，透明区点击穿透到其上方的桌面窗口，输入期间桌面依然可点。
+//! 旧实现抬顶后要等失焦才复位，其上方的全屏窗口会吞掉桌面点击且 blur 永不送达
+//! （E2E「桌面不可操作」根因）；NOACTIVATE 全程保留（点击不激活不抬窗），
+//! WM_KILLFOCUS 防御性置底兜底，WM_WINDOWPOSCHANGING 守卫拦截一切抬窗（双保险）。
 //! 建窗即按主显示器逻辑几何落地（position+inner_size），避免 visible(false)+默认尺寸
 //! 再原生 SetWindowPos 改几何导致 WebView2 dpr 冻结为 1.0（125% 缩放下实测）。
 //! 建窗后再显式 SetWindowPos 到物理屏幕矩形（见 create 内注释）。
@@ -15,10 +20,10 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, DefWindowProcW, GetWindowLongPtrW, SetForegroundWindow, SetWindowLongPtrW,
-    SetWindowPos, GWL_EXSTYLE, GWL_STYLE, GWLP_WNDPROC, HTTRANSPARENT, HWND_BOTTOM, SWP_FRAMECHANGED,
-    SWP_NOACTIVATE, SWP_SHOWWINDOW, WM_KILLFOCUS, WM_NCCALCSIZE, WM_NCHITTEST, WNDPROC,
-    WS_CAPTION, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SYSMENU,
-    WS_THICKFRAME,
+    SetWindowPos, WINDOWPOS, GWL_EXSTYLE, GWL_STYLE, GWLP_WNDPROC, HTTRANSPARENT, HWND_BOTTOM,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
+    WM_KILLFOCUS, WM_NCCALCSIZE, WM_NCHITTEST, WM_WINDOWPOSCHANGING, WNDPROC, WS_CAPTION,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SYSMENU, WS_THICKFRAME,
 };
 
 use crate::desktop_layer::DESKTOP_LAYER_ARGS;
@@ -47,6 +52,13 @@ pub(crate) fn physical_to_logical(physical: (i32, i32), scale: f64) -> (f64, f64
 pub(crate) fn borderless_style(style: u32) -> u32 {
     style
         & !(WS_CAPTION.0 | WS_THICKFRAME.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0)
+}
+
+/// WM_WINDOWPOSCHANGING 守卫判定：凡未声明 SWP_NOZORDER 且目标不是 HWND_BOTTOM 的
+/// z 序调整一律强制置底——窗口必须永远留在桌面带（抬顶会把透明区点击透传引向其上方
+/// 的全屏窗口被吞，E2E「桌面不可操作」根因；置底调用本身放行）
+pub(crate) fn force_bottom_on_change(flags: u32, insert_after: isize) -> bool {
+    flags & SWP_NOZORDER.0 == 0 && insert_after != HWND_BOTTOM.0 as isize
 }
 
 /// 创建浮层窗口：免激活 + TOOLWINDOW（不进 alt-tab）+ 覆盖主显示器 + 置底。
@@ -196,11 +208,29 @@ unsafe extern "system" fn wnd_proc(
                 return LRESULT(HTTRANSPARENT as isize); // 非组件区 → 透传给下层
             }
         }
+    } else if msg == WM_WINDOWPOSCHANGING {
+        // 守卫：拦截一切非置底的 z 序调整（防第三方/框架 SetWindowPos 抬窗）
+        let wp = unsafe { &mut *(lparam.0 as *mut WINDOWPOS) };
+        if force_bottom_on_change(wp.flags.0, wp.hwndInsertAfter.0 as isize) {
+            wp.hwndInsertAfter = HWND_BOTTOM;
+        }
     } else if msg == WM_KILLFOCUS {
-        // 输入结束 → 恢复免激活（点击穿透态）；前端 blur 显式调用同样幂等
+        // 输入结束 → 恢复免激活 + 防御性置底（双保险）：set_active(true) 取焦后
+        // 已立即置底，此处兜底防任何外因抬窗后霸顶——窗口霸顶时透明区点击
+        // 透传会被其上方的全屏窗口吞掉，桌面不可操作；前端 blur 显式调
+        // set_active(false) 同样幂等
         unsafe {
             let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, (ex | WS_EX_NOACTIVATE.0) as isize);
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_BOTTOM),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+            );
         }
     }
     let orig = procs()
@@ -216,20 +246,40 @@ unsafe extern "system" fn wnd_proc(
     }
 }
 
-/// 组件输入激活：摘 NOACTIVATE 并抢键盘焦点（便签/待办输入）；
-/// 失焦由 WM_KILLFOCUS 自动恢复，前端 blur 也可显式调 false（幂等）。
+/// 组件输入激活：SetForegroundWindow 抢键盘焦点后立即置底收回桌面带
+/// （便签/待办输入）。物理键盘只路由到前台线程的焦点窗口，必须激活；
+/// 置底（SWP_NOACTIVATE）不改变激活态——窗口保持前台/焦点继续收键，
+/// 同时待在桌面带，其上方的桌面窗口照常接收透明区透传点击。
+/// 点击触发本函数时 last-input 授权保证 SetForegroundWindow 成功；
+/// 失焦由 WM_KILLFOCUS 兜底（恢复免激活 + 置底），前端 blur 显式调
+/// false 幂等。
 pub fn set_active(hwnd: HWND, active: bool) {
-    install_hit_test(hwnd); // 确保 KILLFOCUS 恢复路径已挂
+    install_hit_test(hwnd); // 确保 KILLFOCUS 兜底路径已挂
     unsafe {
-        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-        let new_ex = if active {
-            ex & !WS_EX_NOACTIVATE.0
-        } else {
-            ex | WS_EX_NOACTIVATE.0
-        };
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex as isize);
         if active {
+            // 激活 → 前台 + 焦点（WM_SETFOCUS → wry 子类化 MoveFocus →
+            // WebView2 接管键盘）；同时抬顶，立即收回
             let _ = SetForegroundWindow(hwnd);
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_BOTTOM),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+            );
+        } else {
+            // 输入结束防御性置底：把任何意外抬窗收回桌面带
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_BOTTOM),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+            );
         }
     }
 }
@@ -238,18 +288,8 @@ pub fn set_active(hwnd: HWND, active: bool) {
 mod tests {
     use super::*;
     use windows::Win32::UI::WindowsAndMessaging::{
-        WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_VISIBLE,
+        SWP_NOMOVE, SWP_NOSIZE, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_VISIBLE,
     };
-
-    #[test]
-    fn physical_to_logical_scales() {
-        // 125%：1920×1080 物理 → 1536×864 逻辑
-        assert_eq!(physical_to_logical((1920, 1080), 1.25), (1536.0, 864.0));
-        // 100%：原样
-        assert_eq!(physical_to_logical((1920, 1080), 1.0), (1920.0, 1080.0));
-        // 负坐标（副屏位置）按比例折算
-        assert_eq!(physical_to_logical((-320, 40), 2.0), (-160.0, 20.0));
-    }
 
     #[test]
     fn borderless_style_strips_frame_bits() {
@@ -265,5 +305,27 @@ mod tests {
         assert_eq!(borderless_style(frame_bits | kept), kept);
         // 空样式幂等
         assert_eq!(borderless_style(0), 0);
+    }
+
+    #[test]
+    fn physical_to_logical_scales() {
+        // 125%：1920×1080 物理 → 1536×864 逻辑
+        assert_eq!(physical_to_logical((1920, 1080), 1.25), (1536.0, 864.0));
+        // 100%：原样
+        assert_eq!(physical_to_logical((1920, 1080), 1.0), (1920.0, 1080.0));
+        // 负坐标（副屏位置）按比例折算
+        assert_eq!(physical_to_logical((-320, 40), 2.0), (-160.0, 20.0));
+    }
+
+    #[test]
+    fn force_bottom_decisions() {
+        // 未声明 NOZORDER 且目标非置底 → 强制置底（无例外：窗口必须永远留在桌面带）
+        assert!(force_bottom_on_change(0, 2));
+        assert!(force_bottom_on_change(SWP_NOMOVE.0, 2));
+        // 声明 NOZORDER 的调整放行（只改位置/尺寸不动 z 序）
+        assert!(!force_bottom_on_change(SWP_NOZORDER.0, 2));
+        // 目标是 HWND_BOTTOM 的调整放行
+        assert!(!force_bottom_on_change(0, HWND_BOTTOM.0 as isize));
+        assert!(!force_bottom_on_change(SWP_NOSIZE.0, HWND_BOTTOM.0 as isize));
     }
 }
