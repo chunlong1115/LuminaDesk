@@ -32,23 +32,14 @@ cargo test          # Rust 单测（src-tauri 下）
 | `src-tauri/src/persistence/` | JSON 原子写与损坏回退 |
 | `docs/spike/` | 阶段 0–3 的实测报告、方案与验收清单（项目权威上下文） |
 | `scripts/` | 阶段 2 回归脚本（点击免激活 / Win+D / 防节流遮挡） |
-| `.e2e/` | 阶段 3 E2E 交互探针（窗口枚举、输入注入、桌面图标命中判定） |
-| `.diag/` | Win32 诊断探针（几何 / DPI / z 序 / 焦点 / 命中区边界） |
 
-## 回归与诊断脚本
+## 回归脚本
 
 PowerShell 5.1 脚本，全部 **ASCII-only**（PS 5.1 会按 GBK 解析无 BOM UTF-8，中文注释可能吞换行）；坐标均为物理像素，脚本内部自行提升 DPI awareness。
 
 ```powershell
 # 阶段 2 回归
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\s3-noactivate.ps1
-
-# 阶段 3 交互探针（每个 pwsh 进程需重新 dot-source）
-. .\.e2e\e2e.ps1
-. .\.e2e\lumina.ps1
-
-# Win32 诊断
-powershell -NoProfile -ExecutionPolicy Bypass -File .diag\client_rect.ps1
 ```
 
 详细场景与预期结果见 [`docs/spike/2026-11-03-phase3-e2e-checklist.md`](docs/spike/2026-11-03-phase3-e2e-checklist.md)。
