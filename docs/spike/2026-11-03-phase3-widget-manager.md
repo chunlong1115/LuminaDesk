@@ -20,6 +20,6 @@ C10a Rust 持久化层 → C10b store 数据链路 → C10b-fix 测试目录残�
 
 ## 遗留（后续任务）
 
-- **模式切换的容器窗口联动（真实缺口）**：浮层模式开启时容器窗口的 WidgetsLayer 仍会渲染 → 双窗口重复显示组件。需系统广播模式变更事件（或 widgets-changed 载荷带模式），容器窗口按模式隐藏/显示 WidgetsLayer——待 4e 收尾
+- ✅ 模式切换的容器窗口联动：已由 C10e 修复（`system_set_widgets_above_icons` 成功后广播 `widgets-mode-changed`；widgets store 水合读模式并订阅广播；ContainerPage 按 aboveIcons 隐藏/显示 WidgetsLayer，水合由容器窗口触发，浮层模式不重复渲染）
 - 可选 `system_hide_desktop_icons`（注册表 + 通知 explorer，失败降级提示）
 - C6 24H2 虚拟机兼容性验证：阶段 5 前补做

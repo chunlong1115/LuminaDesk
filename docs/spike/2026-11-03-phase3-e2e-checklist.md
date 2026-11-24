@@ -101,8 +101,8 @@
 
 | 反馈 | 根因（实测定位） | 修复 | Commit |
 |---|---|---|---|
-| 没有适应桌面大小 | ① WebView2 dpr 冻结 1.0（visible(false)+默认尺寸建窗再改几何）② tao 对 undecorated 窗口默认 shadow，WM_NCCALCSIZE 把 client 内缩 (8,1,8,8)——webview 偏移 (8,1) 且右/下缘裁边 | 建窗参数按主显示器逻辑几何落地；子类化先于重排挂载、WM_NCCALCSIZE 返回 0；剥标题栏样式；显式 SetWindowPos 物理屏幕矩形 | C11b a63033a |
-| 桌面不能进行任何操作 | set_active 抬顶后等 blur 复位——霸顶期间透明区点击被其上方的全屏窗口吞掉且 blur 永不送达 | SetForegroundWindow 抢焦点后立即置底收回桌面带（z 序与激活态正交）；NOACTIVATE 全程保留；KILLFOCUS 置底兜底 + WINDOWPOSCHANGING 守卫（双保险） | C11c 589f688 |
+| 没有适应桌面大小 | ① WebView2 dpr 冻结 1.0（visible(false)+默认尺寸建窗再改几何）② tao 对 undecorated 窗口默认 shadow，WM_NCCALCSIZE 把 client 内缩 (8,1,8,8)——webview 偏移 (8,1) 且右/下缘裁边 | 建窗参数按主显示器逻辑几何落地；子类化先于重排挂载、WM_NCCALCSIZE 返回 0；剥标题栏样式；显式 SetWindowPos 物理屏幕矩形 | C11b dfa7338 |
+| 桌面不能进行任何操作 | set_active 抬顶后等 blur 复位——霸顶期间透明区点击被其上方的全屏窗口吞掉且 blur 永不送达 | SetForegroundWindow 抢焦点后立即置底收回桌面带（z 序与激活态正交）；NOACTIVATE 全程保留；KILLFOCUS 置底兜底 + WINDOWPOSCHANGING 守卫（双保险） | C11c d4709e3 |
 
 **已完成的 Win32 探测回归（100% 环境）**：outer=client=全部子窗 (0,0)-(1920,1080)；网格扫描命中区仅组件卡片；卡片边界逐像素 11/11；SetForegroundWindow 后窗口仍处桌面带且 KILLFOCUS 复位置底、前台归还；z 序持续观察无抬窗。单测 cargo 37/37、vitest 84/84、typecheck/lint 通过。
 

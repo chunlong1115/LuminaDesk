@@ -18,3 +18,10 @@ Thumbs.db
 
 # 日志
 *.log
+
+# 脚本运行产物（E2E / 诊断）
+.e2e/*.png
+.e2e/*.json
+.diag/*.png
+.diag/*.json
+.diag/*.bak
