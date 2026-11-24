@@ -10,6 +10,7 @@ mod shell_window;
 mod stats;
 mod utils;
 mod widgets_layer;
+mod window_assembly;
 
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;

@@ -16,9 +16,15 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, SWP_FRAMECHANGED,
+    SWP_NOACTIVATE, SWP_NOZORDER, WM_NCCALCSIZE,
+};
 
 use crate::events::LAYER_CHANGED;
+use crate::utils::dpi::physical_to_logical;
+use crate::window_assembly::{borderless_style, call_original, install_subclass};
 
 pub use attach::{from_isize, to_isize};
 
@@ -66,7 +72,16 @@ pub fn container_hwnd(app: &AppHandle) -> Option<HWND> {
 ///（Tauri 2 单一共享 WebView2 环境按首个窗口参数初始化——spike 0x8007139F 根因）。
 pub const DESKTOP_LAYER_ARGS: &str = "--disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=CalculateNativeWinOcclusion";
 
-/// 创建容器窗口（visible:false 创建、挂载后 Show，避免闪烁）
+/// 容器默认物理几何：主显示器原点 + 偏移，560×460（v1 固定值；
+/// 布局持久化接入后改读存储）。建窗与 attach 必须共用同一组常量
+pub const CONTAINER_OFFSET: (i32, i32) = (40, 40);
+pub const CONTAINER_SIZE: (i32, i32) = (560, 460);
+
+/// 创建容器窗口（visible:false 创建、挂载后 Show，避免闪烁）。
+/// 建窗即按目标屏幕逻辑几何落地（position+inner_size，同浮层）：visible(false)+
+/// 默认尺寸会让 WebView2 按初始上下文冻结缩放因子（125% 缩放下实测 dpr 恒 1.0）。
+/// 建窗后立即子类化并把 WM_NCCALCSIZE 归零，随后的显式 SetWindowPos 才能让
+/// client=outer、wry 把 webview 子窗排满整窗（修掉 tao shadow 内缩 (8,1,8,8)）。
 pub fn create_container_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
     // debug 构建携带诊断参数（S4 滴答验证）；release 不带（零开销）
     let url = if cfg!(debug_assertions) {
@@ -74,13 +89,28 @@ pub fn create_container_window(app: &AppHandle, label: &str) -> Option<WebviewWi
     } else {
         "index.html?role=container"
     };
-    tauri::WebviewWindowBuilder::new(
+    // 主显示器物理原点与缩放因子（与 attach 的 MonitorFromPoint(0,0) 同一基准）
+    let monitor = app.monitor_from_point(0.0, 0.0).ok().flatten();
+    let scale = monitor.as_ref().map(|m| m.scale_factor()).unwrap_or(1.0);
+    let (mx, my) = monitor
+        .as_ref()
+        .map(|m| (m.position().x, m.position().y))
+        .unwrap_or((0, 0));
+    // tauri 建窗参数以逻辑像素计，Monitor::position/size 为物理像素
+    let (lx, ly) = physical_to_logical((mx + CONTAINER_OFFSET.0, my + CONTAINER_OFFSET.1), scale);
+    let (lw, lh) = physical_to_logical(CONTAINER_SIZE, scale);
+    log::info!(
+        "container window geometry: monitor physical=({mx},{my}) scale={scale} -> logical=({lx},{ly}), size=({lw},{lh})"
+    );
+
+    let w = tauri::WebviewWindowBuilder::new(
         app,
         label,
         tauri::WebviewUrl::App(url.into()),
     )
     .title("LuminaDesk Container")
-    .inner_size(560.0, 460.0)
+    .position(lx, ly)
+    .inner_size(lw, lh)
     .transparent(true)
     .no_redirection_bitmap(true)
     .decorations(false)
@@ -90,7 +120,48 @@ pub fn create_container_window(app: &AppHandle, label: &str) -> Option<WebviewWi
     .additional_browser_args(DESKTOP_LAYER_ARGS)
     .build()
     .map_err(|e| log::error!("container window build failed: {e}"))
-    .ok()
+    .ok()?;
+    let Ok(h) = w.hwnd() else {
+        log::error!("container window hwnd unavailable");
+        return Some(w);
+    };
+    let hwnd = HWND(h.0);
+
+    // 子类化必须先于任何重排（同浮层）：NCCALCSIZE 归零后 client=outer，
+    // 后续 SetWindowPos/attach 才能让 wry 按整窗摆放 webview
+    install_subclass(hwnd, container_wnd_proc);
+    unsafe {
+        // 剥标题栏/调整边框类样式位（decorations(false) 之外的兜底；
+        // 该位会引出 Snap Layouts/系统菜单等系统行为，对桌面层无意义）
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        SetWindowLongPtrW(hwnd, GWL_STYLE, borderless_style(style) as isize);
+        // 显式落地物理矩形（保持隐藏）：校准创建期 tao shadow 造成的 client 内缩，
+        // SWP_FRAMECHANGED 触发 WM_NCCALCSIZE（返回 0）与 WM_SIZE → wry 重排子窗
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            mx + CONTAINER_OFFSET.0,
+            my + CONTAINER_OFFSET.1,
+            CONTAINER_SIZE.0,
+            CONTAINER_SIZE.1,
+            SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+    }
+    Some(w)
+}
+
+/// 容器窗口过程：WM_NCCALCSIZE 归零（client=outer，修掉 tao shadow 内缩），
+/// 其余消息交还 tao。容器不需要命中穿透/z 序守卫（点击与 z 序由宿主 WorkerW 管理）
+unsafe extern "system" fn container_wnd_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if msg == WM_NCCALCSIZE {
+        return LRESULT(0);
+    }
+    call_original(hwnd, msg, wparam, lparam)
 }
 
 /// 重建容器窗口（修复 4：不调用 close()——对已死窗口无效且 label 泄漏；
@@ -133,8 +204,16 @@ pub fn attach_container(app: &AppHandle, why: &str) -> Result<String, String> {
     }
     .ok_or("host window not found")?;
     let container = container_hwnd(app).ok_or("container window not found")?;
-    // v1：默认位置 (40,40) 物理像素（布局持久化接入后改读存储）
-    attach::attach(container, host, topo, 40, 40, 560, 460)?;
+    // v1：与建窗共用同一默认物理几何（布局持久化接入后改读存储）
+    attach::attach(
+        container,
+        host,
+        topo,
+        CONTAINER_OFFSET.0,
+        CONTAINER_OFFSET.1,
+        CONTAINER_SIZE.0,
+        CONTAINER_SIZE.1,
+    )?;
     HOST_HWND.store(to_isize(host), Ordering::SeqCst);
     ATTACHED.store(true, Ordering::SeqCst);
     log::info!("attach ok ({why}) topo={topo:?} host=0x{:X}", to_isize(host));

@@ -12,47 +12,23 @@
 //! 建窗后再显式 SetWindowPos 到物理屏幕矩形（见 create 内注释）。
 //! Win32 交互路径不做单测（与 host/attach 同约定），纯判定函数有单测，其余人工 E2E。
 
-use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
-
 use tauri::{AppHandle, Manager};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallWindowProcW, DefWindowProcW, GetWindowLongPtrW, SetForegroundWindow, SetWindowLongPtrW,
-    SetWindowPos, WINDOWPOS, GWL_EXSTYLE, GWL_STYLE, GWLP_WNDPROC, HTTRANSPARENT, HWND_BOTTOM,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
-    WM_KILLFOCUS, WM_NCCALCSIZE, WM_NCHITTEST, WM_WINDOWPOSCHANGING, WNDPROC, WS_CAPTION,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SYSMENU, WS_THICKFRAME,
+    GetWindowLongPtrW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, WINDOWPOS,
+    GWL_EXSTYLE, GWL_STYLE, HTTRANSPARENT, HWND_BOTTOM, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, WM_KILLFOCUS, WM_NCCALCSIZE,
+    WM_NCHITTEST, WM_WINDOWPOSCHANGING, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
 use crate::desktop_layer::DESKTOP_LAYER_ARGS;
+use crate::utils::dpi::physical_to_logical;
 use crate::utils::hit_test;
+use crate::window_assembly::{borderless_style, call_original, install_subclass, remove_subclass};
 
 /// 浮层窗口 label（v1 主显示器；多显示器拓扑属后续任务）
 pub const WIDGETS_LABEL: &str = "widgets-0";
-
-/// 已子类化窗口的原窗口过程（key = hwnd；容器窗口激活时也会挂入）。
-/// HashMap::new 非 const → OnceLock 惰性初始化
-static ORIG_PROCS: OnceLock<Mutex<HashMap<isize, WNDPROC>>> = OnceLock::new();
-
-fn procs() -> &'static Mutex<HashMap<isize, WNDPROC>> {
-    ORIG_PROCS.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-/// 物理像素 → 逻辑像素（tauri 建窗参数 position/inner_size 以逻辑像素计；
-/// Monitor::size/position 返回物理像素，需按 scale_factor 折算）
-pub(crate) fn physical_to_logical(physical: (i32, i32), scale: f64) -> (f64, f64) {
-    (physical.0 as f64 / scale, physical.1 as f64 / scale)
-}
-
-/// 无边框样式换算：剥掉标题栏/调整边框类样式位（其余位如 WS_VISIBLE/CLIP* 保留）。
-/// WM_NCCALCSIZE 返回 0 后这些位不参与布局，剥除是为了免 Snap Layouts 悬浮、
-/// 系统菜单等系统行为。纯函数便于单测
-pub(crate) fn borderless_style(style: u32) -> u32 {
-    style
-        & !(WS_CAPTION.0 | WS_THICKFRAME.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0)
-}
 
 /// WM_WINDOWPOSCHANGING 守卫判定：凡未声明 SWP_NOZORDER 且目标不是 HWND_BOTTOM 的
 /// z 序调整一律强制置底——窗口必须永远留在桌面带（抬顶会把透明区点击透传引向其上方
@@ -120,7 +96,7 @@ pub fn create(app: &AppHandle) -> Result<(), String> {
     // tao 以阴影内缩作答，WM_SIZE 时 wry 会按内缩后的 client 尺寸摆放 webview 子窗
     // （实测子窗 1904×1071 而非满屏）；先挂上则 NCCALCSIZE 返回 0、client=满屏，
     // 随后的 WM_SIZE 让 wry 把子窗排到整窗
-    install_hit_test(hwnd);
+    install_wnd_proc(hwnd);
 
     unsafe {
         // 免激活（透明区穿透、组件区点击不抢焦点）+ TOOLWINDOW（不进 alt-tab/taskbar）
@@ -166,22 +142,15 @@ pub fn destroy(app: &AppHandle) -> Result<(), String> {
     };
     let hwnd = HWND(w.hwnd().map_err(|e| e.to_string())?.0);
     w.close().map_err(|e| e.to_string())?;
-    procs().lock().unwrap().remove(&(hwnd.0 as isize));
+    remove_subclass(hwnd);
     log::info!("widgets layer destroyed");
     Ok(())
 }
 
-/// 窗口过程子类化（幂等）：WM_NCHITTEST 穿透 + WM_KILLFOCUS 恢复免激活
-fn install_hit_test(hwnd: HWND) {
-    let key = hwnd.0 as isize;
-    if procs().lock().unwrap().contains_key(&key) {
-        return;
-    }
-    unsafe {
-        let prev = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, wnd_proc as *const () as isize);
-        let orig: WNDPROC = std::mem::transmute(prev);
-        procs().lock().unwrap().insert(key, orig);
-    }
+/// 窗口过程子类化（幂等，共享装配模块）：WM_NCCALCSIZE 归零 + WM_NCHITTEST 穿透
+/// + WM_WINDOWPOSCHANGING 置底守卫 + WM_KILLFOCUS 恢复免激活
+fn install_wnd_proc(hwnd: HWND) {
+    install_subclass(hwnd, wnd_proc);
 }
 
 unsafe extern "system" fn wnd_proc(
@@ -196,7 +165,7 @@ unsafe extern "system" fn wnd_proc(
         // 入口），其 WM_NCCALCSIZE 会把 client 按 calculate_insets_for_dpi 内缩
         // (8,1,8,8)（96dpi 实测）——webview 偏移 (8,1) 且右/下缘裁边，与
         // 「适应桌面大小」逐像素违背；本子类化先于 tao 执行，返回 0 使
-        // client=outer=屏幕矩形。注：本子类化只挂在浮层窗口上
+        // client=outer=屏幕矩形。容器窗口复用同一归零策略（见 window_assembly）
         return LRESULT(0);
     } else if msg == WM_NCHITTEST {
         // lparam = 屏幕坐标（有符号分量）→ 转客户区坐标 → 命中判定
@@ -233,17 +202,7 @@ unsafe extern "system" fn wnd_proc(
             );
         }
     }
-    let orig = procs()
-        .lock()
-        .unwrap()
-        .get(&(hwnd.0 as isize))
-        .copied()
-        .flatten();
-    match orig {
-        // WNDPROC = Option<fn>（0.61 别名），Some(prev) 即 WNDPROC
-        Some(prev) => unsafe { CallWindowProcW(Some(prev), hwnd, msg, wparam, lparam) },
-        None => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
-    }
+    call_original(hwnd, msg, wparam, lparam)
 }
 
 /// 组件输入激活：SetForegroundWindow 抢键盘焦点后立即置底收回桌面带
@@ -254,7 +213,7 @@ unsafe extern "system" fn wnd_proc(
 /// 失焦由 WM_KILLFOCUS 兜底（恢复免激活 + 置底），前端 blur 显式调
 /// false 幂等。
 pub fn set_active(hwnd: HWND, active: bool) {
-    install_hit_test(hwnd); // 确保 KILLFOCUS 兜底路径已挂
+    install_wnd_proc(hwnd); // 确保 KILLFOCUS 兜底路径已挂
     unsafe {
         if active {
             // 激活 → 前台 + 焦点（WM_SETFOCUS → wry 子类化 MoveFocus →
@@ -287,35 +246,6 @@ pub fn set_active(hwnd: HWND, active: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        SWP_NOMOVE, SWP_NOSIZE, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_VISIBLE,
-    };
-
-    #[test]
-    fn borderless_style_strips_frame_bits() {
-        // 标题栏/调整边框/系统菜单/最小化/最大化位全部剥除
-        let frame_bits = WS_CAPTION.0
-            | WS_THICKFRAME.0
-            | WS_SYSMENU.0
-            | WS_MINIMIZEBOX.0
-            | WS_MAXIMIZEBOX.0;
-        assert_eq!(borderless_style(frame_bits), 0);
-        // 其余位（VISIBLE/CLIPSIBLINGS/CLIPCHILDREN）原样保留
-        let kept = WS_VISIBLE.0 | WS_CLIPSIBLINGS.0 | WS_CLIPCHILDREN.0;
-        assert_eq!(borderless_style(frame_bits | kept), kept);
-        // 空样式幂等
-        assert_eq!(borderless_style(0), 0);
-    }
-
-    #[test]
-    fn physical_to_logical_scales() {
-        // 125%：1920×1080 物理 → 1536×864 逻辑
-        assert_eq!(physical_to_logical((1920, 1080), 1.25), (1536.0, 864.0));
-        // 100%：原样
-        assert_eq!(physical_to_logical((1920, 1080), 1.0), (1920.0, 1080.0));
-        // 负坐标（副屏位置）按比例折算
-        assert_eq!(physical_to_logical((-320, 40), 2.0), (-160.0, 20.0));
-    }
 
     #[test]
     fn force_bottom_decisions() {
