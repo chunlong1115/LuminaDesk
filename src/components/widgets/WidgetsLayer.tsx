@@ -42,6 +42,8 @@ export function WidgetsLayer() {
             className={`${styles.card} ${w.kind === "todo" ? styles.cardTodo : ""}`}
             style={{ left: w.x, top: w.y }}
             data-hit-region=""
+            /* 浮层窗口据此测量卡片外框并做视口内坐标夹取（见 WidgetsPage） */
+            data-widget-id={w.id}
           >
             <Cmp />
           </div>

@@ -193,6 +193,12 @@
   cursor: pointer;
 }
 
+/* 待办文本可能含长单词/URL：允许任意断行，避免撑出卡片内的横向滚动条
+   （todoList 为 overflow-y:auto，另一轴会随之变成可滚动） */
+.todoLabel span {
+  overflow-wrap: anywhere;
+}
+
 .todoDone {
   text-decoration: line-through;
   color: #6d7f9e;

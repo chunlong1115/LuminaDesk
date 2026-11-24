@@ -1,3 +1,10 @@
+/* 控制窗口是普通窗口，允许随内容滚动，但需先清掉浏览器默认 8px 外边距：
+   否则 body 外边距 + .page 的 min-height:100vh 会让窗口始终多出可滚动高度（常驻竖滚动条） */
+html,
+body {
+  margin: 0;
+}
+
 .page {
   min-height: 100vh;
   background: #10151f;
@@ -62,6 +69,8 @@
   padding: 10px;
   font-size: 12px;
   white-space: pre-wrap;
+  /* 状态文本含长路径/长 hex 等无空格串，禁止撑出横向滚动条 */
+  overflow-wrap: anywhere;
   margin: 10px 0 0;
 }
 

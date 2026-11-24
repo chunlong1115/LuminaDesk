@@ -1,5 +1,17 @@
 /* 小组件层：覆盖容器全窗，空白区事件穿透给容器（图标框选/拖拽） */
 
+/* 浮层窗口（container / widgets）专用基础重置：两窗口均为全屏/贴桌面透明层，
+   浏览器默认 body 外边距与溢出会在桌面边缘撑出滚动条（底部横条实测）；
+   overflow:hidden 同时兜住便签拖到屏幕边缘时的溢出，浮层窗口永远不可滚动 */
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
 .layer {
   position: absolute;
   inset: 0;
@@ -9,6 +21,10 @@
 
 .card {
   position: absolute;
+  /* 宽高按外框计（含 padding/border）：cardTodo 264×320，默认盒模型会把外框
+     撑到 290×342，贴右侧的待办卡片因此超出 1536 视口 10px，触发桌面底部
+     横向滚动条（本机 125% 实测）。改为 border-box 后默认布局 1256+264=1520 贴合 */
+  box-sizing: border-box;
   padding: 10px 12px;
   background: rgba(16, 21, 31, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.15);
